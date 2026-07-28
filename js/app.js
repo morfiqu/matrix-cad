@@ -123,6 +123,7 @@ function setTool(tool) {
     const nextTool = isAlreadyActive ? 'select' : tool;
     
     appState.activeTool = nextTool;
+    console.log(`[CAD Tool] Tool changed to: ${nextTool}`);
     document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
     
     if (nextTool !== 'select') {
@@ -134,6 +135,7 @@ function setTool(tool) {
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
+    console.log(`[CAD CellMouseDown] Tool: ${appState.activeTool}, cell: (${r}, ${c})`);
     if (isPasteMode || appState.isPasteMode) {
         e.stopPropagation();
         e.preventDefault();
@@ -174,6 +176,7 @@ function handleCellHover(e, fieldId, r, c) {
 }
 
 function handleCellClick(fieldId, r, c) {
+    console.log(`[CAD CellClick] Tool: ${appState.activeTool}, cell: (${r}, ${c})`);
     if (appState.isSimulationMode) return;
     const field = appState.fields.find(f => f.id === fieldId);
     if (!field) return;
