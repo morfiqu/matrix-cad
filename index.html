@@ -121,10 +121,14 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <h3 class="section-title" style="margin: 0;">Выходы пистолетов</h3>
                 </div>
-                <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px;">
+                <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 8px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--text-main); user-select: none;">
                         <input type="checkbox" id="toggle-power-flow" onchange="togglePowerFlow(this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);">
                         <span>⚡ Отображать токи (кВт)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--text-main); user-select: none;">
+                        <input type="checkbox" id="toggle-flow-arrows" onchange="toggleFlowArrows(this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);">
+                        <span>➡️ Отображать путь тока</span>
                     </label>
                 </div>
                 <div class="routing-list" id="routing-summary">

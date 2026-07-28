@@ -20,6 +20,7 @@ function createInitialState() {
         activeTool: 'select',
         isSimulationMode: false,
         showPowerFlow: false,
+        showFlowArrows: false,
         selectedKeys: new Set(),
         historyStack: [],
         redoStack: [],

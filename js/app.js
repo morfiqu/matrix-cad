@@ -82,6 +82,7 @@ function updateCanvas() {
             pistolPowers: simulationData.pistolPowers,
             isSimulationMode: appState.isSimulationMode,
             showPowerFlow: appState.showPowerFlow,
+            showFlowArrows: appState.showFlowArrows,
             selectedKeys: appState.selectedKeys,
             activeTool: appState.activeTool,
             onUpdateCanvas: updateCanvas,
@@ -1844,6 +1845,15 @@ window.setMode = function(isSim) {
         toolbar.style.display = isSim ? 'none' : 'block';
         outputs.style.display = isSim ? 'block' : 'none';
     }
+
+    const togglePowerFlowInput = document.getElementById('toggle-power-flow');
+    if (togglePowerFlowInput) {
+        togglePowerFlowInput.checked = appState.showPowerFlow;
+    }
+    const toggleFlowArrowsInput = document.getElementById('toggle-flow-arrows');
+    if (toggleFlowArrowsInput) {
+        toggleFlowArrowsInput.checked = appState.showFlowArrows;
+    }
     
     updateCanvas();
 };
@@ -1888,6 +1898,13 @@ window.clearWorkspaceGlobal = function() {
 
 window.togglePowerFlow = function(checked) {
     appState.showPowerFlow = checked;
+    if (appState.isSimulationMode) {
+        updateCanvas();
+    }
+};
+
+window.toggleFlowArrows = function(checked) {
+    appState.showFlowArrows = checked;
     if (appState.isSimulationMode) {
         updateCanvas();
     }
