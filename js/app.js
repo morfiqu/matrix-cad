@@ -132,6 +132,10 @@ function setTool(tool) {
     } else {
         document.getElementById('tool-select')?.classList.add('active');
     }
+    
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
