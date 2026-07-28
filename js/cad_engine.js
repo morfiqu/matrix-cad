@@ -53,6 +53,8 @@ function bindSVGDragSelection(field, svg, state) {
         
         if (!isTargetValid) return;
         
+        window.getSelection()?.removeAllRanges();
+        
         const rect = svg.getBoundingClientRect();
         const startX = e.clientX - rect.left;
         const startY = e.clientY - rect.top;

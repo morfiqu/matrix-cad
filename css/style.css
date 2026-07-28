@@ -234,6 +234,9 @@ header {
     gap: 20px;
     align-items: flex-start;
     transition: background-color 0.3s;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
 }
 
 /* CARD FOR INDIVIDUAL SHEET BLOCK */
