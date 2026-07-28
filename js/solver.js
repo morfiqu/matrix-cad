@@ -219,10 +219,7 @@ function calculateSimulation(fields) {
                             const cKey = parts[1];
                             const f = fields.find(x => x.id === fId);
                             if (f && f.contactors[cKey]) {
-                                const type = f.contactors[cKey].type;
-                                if (type === 'horizontal' || type === 'vertical') {
-                                    contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
-                                }
+                                contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
                             }
                         });
                     });
@@ -265,104 +262,7 @@ function calculateSimulation(fields) {
         }
     });
 
-    // 2. Intersection Contactors Solver
-    fields.forEach(field => {
-        for (let r = 0; r < field.rows; r++) {
-            let rowPwr = 0;
-            
-            for (let c = 0; c < field.cols; c++) {
-                const comp = field.components[`${r}-${c}`];
-                if (comp && comp.type === 'inverter') {
-                    const invUid = `${field.id}-${r}-${c}`;
-                    if (invReachesPistol.has(invUid)) {
-                        rowPwr += (comp.power !== undefined ? comp.power : 60);
-                    }
-                }
-            }
-            
-            for (let c = 0; c < field.cols; c++) {
-                const comp = field.components[`${r}-${c}`];
-                if (comp && comp.type === 'cable') {
-                    const netName = comp.name.toLowerCase();
-                    let isSourceRow = false;
-                    for (let cCheck = 0; cCheck < field.cols; cCheck++) {
-                        if (field.components[`${r}-${cCheck}`]?.type === 'inverter') {
-                            isSourceRow = true;
-                            break;
-                        }
-                    }
-                    if (!isSourceRow && cableNetPowers[netName]) {
-                        rowPwr += cableNetPowers[netName];
-                    } else if (isSourceRow) {
-                        let externalNetPwr = 0;
-                        fields.forEach(otherF => {
-                            if (otherF.id !== field.id) {
-                                for (let oKey in otherF.components) {
-                                    const oComp = otherF.components[oKey];
-                                    if (oComp.type === 'inverter') {
-                                        const oR = parseInt(oKey.split('-')[0]);
-                                        for (let oC = 0; oC < otherF.cols; oC++) {
-                                            const oCable = otherF.components[`${oR}-${oC}`];
-                                            if (oCable && oCable.type === 'cable' && oCable.name.toLowerCase() === netName) {
-                                                const oUid = `${otherF.id}-${oKey}`;
-                                                if (invReachesPistol.has(oUid)) {
-                                                    externalNetPwr += (oComp.power !== undefined ? oComp.power : 60);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                        rowPwr += externalNetPwr;
-                    }
-                    break;
-                }
-            }
 
-            if (rowPwr > 0) {
-                const activeRowCtcs = [];
-                for (let c = 1; c < field.cols - 1; c++) {
-                    const ctc = field.contactors[`${r}-${c}`];
-                    if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
-                        activeRowCtcs.push(`${field.id}-ctc-${r}-${c}`);
-                    }
-                }
-                
-                if (activeRowCtcs.length > 0) {
-                    const pwrPerCtc = rowPwr / activeRowCtcs.length;
-                    activeRowCtcs.forEach(ctcKey => {
-                        contactorPowers[ctcKey] = pwrPerCtc;
-                    });
-                }
-            }
-        }
-
-        for (let c = 1; c < field.cols - 1; c++) {
-            let pistolR = -1;
-            for (let r = 0; r < field.rows; r++) {
-                const pComp = field.components[`${r}-${c}`];
-                if (pComp && pComp.type === 'pistol') {
-                    pistolR = r;
-                    break;
-                }
-            }
-            if (pistolR !== -1) {
-                const closedColCtcs = [];
-                for (let r = 1; r < field.rows - 1; r++) {
-                    const ctc = field.contactors[`${r}-${c}`];
-                    if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
-                        closedColCtcs.push(`${field.id}-ctc-${r}-${c}`);
-                    }
-                }
-                if (closedColCtcs.length === 1) {
-                    const pUid = `${field.id}-${pistolR}-${c}`;
-                    const pPower = pistolPowers[pUid] || 0;
-                    contactorPowers[closedColCtcs[0]] = pPower;
-                }
-            }
-        }
-    });
 
     // 3. Multi-Sheet & Multi-Field Universal Ring Power Solver
     const processedInvKeys = new Set();
