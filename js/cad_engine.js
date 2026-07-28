@@ -62,8 +62,9 @@ function bindSVGDragSelection(field, svg, state) {
         dragStart = { x: startX, y: startY };
         
         if (!isContactorCtrlDrag && !e.ctrlKey && !e.metaKey) {
+            const selectedEls = svg.querySelectorAll('.selected');
+            selectedEls.forEach(el => el.classList.remove('selected'));
             selectedKeys.clear();
-            if (onUpdateCanvas) onUpdateCanvas();
         }
         
         let previewGroup = null;

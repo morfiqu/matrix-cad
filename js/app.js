@@ -984,8 +984,8 @@ function updatePastePreview(field, svg, anchorR, anchorC) {
     for (let item of clipboard.items) {
         const tr = anchorR + item.relR;
         const tc = anchorC + item.relC;
-        const x = 100 + tc * 60 - 60/2 + 4;
-        const y = 60 + tr * 50 - 50/2 + 4;
+        const x = 150 + tc * 60 - 60/2 + 4;
+        const y = 90 + tr * 50 - 50/2 + 4;
         const w = 60 - 8;
         const h = 50 - 8;
         
@@ -1000,8 +1000,8 @@ function updatePastePreview(field, svg, anchorR, anchorC) {
         layer.appendChild(rect);
         
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', 100 + tc * 60);
-        label.setAttribute('y', 60 + tr * 50 + 5);
+        label.setAttribute('x', 150 + tc * 60);
+        label.setAttribute('y', 90 + tr * 50 + 5);
         label.setAttribute('text-anchor', 'middle');
         label.setAttribute('font-size', '10');
         label.setAttribute('fill', valid ? '#fff' : '#fcc');
@@ -1637,19 +1637,22 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     
-    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+    const keyLower = e.key ? e.key.toLowerCase() : '';
+    const code = e.code || '';
+
+    if ((e.ctrlKey || e.metaKey) && (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я')) {
         e.preventDefault();
         undo(appState, updateCanvas);
-    } else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
+    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyY' || keyLower === 'y' || keyLower === 'н' || (e.shiftKey && (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я')))) {
         e.preventDefault();
         redo(appState, updateCanvas);
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
+    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyC' || keyLower === 'c' || keyLower === 'с')) {
         e.preventDefault();
         copySelected();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyV' || keyLower === 'v' || keyLower === 'м')) {
         e.preventDefault();
         pasteClipboard();
-    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
+    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyA' || keyLower === 'a' || keyLower === 'ф')) {
         e.preventDefault();
         appState.selectedKeys.clear();
         appState.fields.forEach(f => {
@@ -1658,8 +1661,10 @@ window.addEventListener('keydown', (e) => {
         });
         updateCanvas();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        deleteSelected();
+        if (!isPasteMode) {
+            e.preventDefault();
+            deleteSelected();
+        }
     }
 });
 

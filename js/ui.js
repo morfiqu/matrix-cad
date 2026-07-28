@@ -122,8 +122,10 @@ function loadFromFile(event, state, updateCanvasCallback) {
     reader.onload = function(e) {
         try {
             const data = JSON.parse(e.target.result);
-            if (data.fields) {
-                state.fields = data.fields;
+            const loadedFields = Array.isArray(data) ? data : (data.fields || null);
+            if (loadedFields && loadedFields.length > 0) {
+                state.fields = loadedFields;
+                if (state.selectedKeys) state.selectedKeys.clear();
                 saveHistoryState(state);
                 updateCanvasCallback();
             } else {
