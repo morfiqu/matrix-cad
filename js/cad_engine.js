@@ -44,7 +44,7 @@ function bindSVGDragSelection(field, svg, state) {
     const handleMouseDown = (e) => {
         if (state.isSimulationMode) return;
         
-        const currentTool = state.activeTool || 'select';
+        const currentTool = (window.appState && window.appState.activeTool) || state.activeTool || 'select';
         
         if (state.isPasteMode || isPasteMode) {
             const rect = svg.getBoundingClientRect();
@@ -344,7 +344,7 @@ function drawGridCells(field, svg, state) {
             }
             
             rect.onmousedown = (e) => {
-                const currentTool = state.activeTool || 'select';
+                const currentTool = (window.appState && window.appState.activeTool) || state.activeTool || 'select';
                 console.log(`[TESTPOINT 1: rect.onmousedown] cell: (${r}, ${c}), tool: ${currentTool}, simMode: ${state.isSimulationMode}`);
                 if (state.isSimulationMode) return;
                 const isContactorCtrlDrag = (currentTool === 'contactor' && (e.ctrlKey || e.metaKey));
