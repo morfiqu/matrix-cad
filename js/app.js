@@ -13,6 +13,14 @@ let lastValidSelectedKeys = null;
 let lastCompClickTime = 0;
 let lastCompClickKey = null;
 
+let isDrawingComponents = false;
+let activeFieldId = null;
+
+window.addEventListener('mouseup', () => {
+    isDrawingComponents = false;
+    activeFieldId = null;
+});
+
 function updateCanvas() {
     const fieldsList = document.getElementById('fields-list');
     if (!fieldsList) return;
@@ -67,7 +75,8 @@ function updateCanvas() {
             activeTool: appState.activeTool,
             onUpdateCanvas: updateCanvas,
             onSaveHistoryState: () => saveHistoryState(appState),
-            onCellClick: (e, fId, r, c) => handleCellClick(fId, r, c),
+            onCellMouseDown: (e, fId, r, c) => handleCellMouseDown(e, fId, r, c),
+            onCellHover: (e, fId, r, c) => handleCellHover(e, fId, r, c),
             onAdjustSize: (fId, type, delta) => adjustSize(fId, type, delta),
             onInsertCol: (f, c) => insertColAtIndex(f, c),
             onDeleteCol: (f, c) => deleteColAtIndex(f, c),
@@ -96,6 +105,20 @@ function setTool(tool) {
     
     if (nextTool !== 'select') {
         document.getElementById(`tool-${nextTool}`)?.classList.add('active');
+    }
+}
+
+function handleCellMouseDown(e, fieldId, r, c) {
+    if (e.shiftKey && appState.activeTool !== 'select') {
+        isDrawingComponents = true;
+        activeFieldId = fieldId;
+    }
+    handleCellClick(fieldId, r, c);
+}
+
+function handleCellHover(e, fieldId, r, c) {
+    if (isDrawingComponents && appState.activeTool !== 'select' && activeFieldId === fieldId) {
+        handleCellClick(fieldId, r, c);
     }
 }
 

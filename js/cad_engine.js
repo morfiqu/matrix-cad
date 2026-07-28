@@ -60,7 +60,6 @@ function bindSVGDragSelection(field, svg, state) {
         if (!isContactorCtrlDrag && !e.ctrlKey && !e.metaKey) {
             selectedKeys.clear();
             if (onUpdateCanvas) onUpdateCanvas();
-            return;
         }
         
         let previewGroup = null;
@@ -300,7 +299,7 @@ function bindSVGDragSelection(field, svg, state) {
 }
 
 function drawGridCells(field, svg, state) {
-    const { isSimulationMode, activeTool, onCellClick } = state;
+    const { isSimulationMode, activeTool, onCellMouseDown, onCellHover } = state;
     
     for (let r = 0; r < field.rows; r++) {
         const y = marginY + r * cellHeight;
@@ -332,7 +331,11 @@ function drawGridCells(field, svg, state) {
                 if (activeTool === 'select' || isContactorCtrlDrag) {
                     return;
                 }
-                if (onCellClick) onCellClick(e, field.id, r, c);
+                if (onCellMouseDown) onCellMouseDown(e, field.id, r, c);
+            };
+
+            rect.onmouseenter = (e) => {
+                if (onCellHover) onCellHover(e, field.id, r, c);
             };
 
             svg.appendChild(rect);
