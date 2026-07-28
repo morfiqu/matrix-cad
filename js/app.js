@@ -506,15 +506,11 @@ function startGroupDrag(e, fieldId, startR, startC, startType) {
     const onMouseMove = (moveEvent) => {
         if (!isDraggingGroup) return;
         
-        const rect = svgEl.getBoundingClientRect();
-        const mouseX = moveEvent.clientX - rect.left;
-        const mouseY = moveEvent.clientY - rect.top;
+        const deltaX = moveEvent.clientX - e.clientX;
+        const deltaY = moveEvent.clientY - e.clientY;
         
-        const currentC = Math.round((mouseX - 150) / 60);
-        const currentR = Math.round((mouseY - 90) / 50);
-        
-        const deltaR = currentR - startR;
-        const deltaC = currentC - startC;
+        const deltaC = Math.round(deltaX / 60);
+        const deltaR = Math.round(deltaY / 50);
         
         if (deltaR === 0 && deltaC === 0) return;
         
