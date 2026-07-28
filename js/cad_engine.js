@@ -46,12 +46,12 @@ function bindSVGDragSelection(field, svg, state) {
         
         const currentTool = state.activeTool || 'select';
         
-        if (state.isPasteMode) {
+        if (state.isPasteMode || isPasteMode) {
             const rect = svg.getBoundingClientRect();
             const startX = e.clientX - rect.left;
             const startY = e.clientY - rect.top;
-            const c = Math.floor((startX - marginX) / cellWidth);
-            const r = Math.floor((startY - marginY) / cellHeight);
+            const c = Math.round((startX - marginX) / cellWidth);
+            const r = Math.round((startY - marginY) / cellHeight);
             e.stopPropagation();
             if (window.commitPaste) window.commitPaste(field, r, c);
             return;

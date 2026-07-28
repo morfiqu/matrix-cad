@@ -126,7 +126,10 @@ function setTool(tool) {
     document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
     
     if (nextTool !== 'select') {
-        document.getElementById(`tool-${nextTool}`)?.classList.add('active');
+        const activeBtn = document.getElementById(`tool-${nextTool}`);
+        if (activeBtn) activeBtn.classList.add('active');
+    } else {
+        document.getElementById('tool-select')?.classList.add('active');
     }
 }
 
@@ -1100,27 +1103,27 @@ function commitPaste(field, anchorR, anchorC) {
 }
 
 function getLowestAvailableIndexGlobal(type) {
-    const usedIndices = new Set();
-    const prefix = type === 'inverter' ? "Inv " : (type === 'pistol' ? "P " : "C");
-    
-    appState.fields.forEach(field => {
-        for (let key in field.components) {
-            const comp = field.components[key];
-            if (comp.type === type && comp.name.startsWith(prefix)) {
-                const suffix = comp.name.slice(prefix.length).trim();
-                const num = parseInt(suffix);
-                if (!isNaN(num)) {
-                    usedIndices.add(num);
+    let k = 1;
+    while (true) {
+        let nameToCheck = "";
+        if (type === 'inverter') nameToCheck = `Inv ${k}`;
+        else if (type === 'pistol') nameToCheck = `P ${k}`;
+        else if (type === 'cable') nameToCheck = `C${k}`;
+        
+        let found = false;
+        for (let f of appState.fields) {
+            for (let key in f.components) {
+                const comp = f.components[key];
+                if (comp && comp.name && comp.name.toLowerCase() === nameToCheck.toLowerCase()) {
+                    found = true;
+                    break;
                 }
             }
+            if (found) break;
         }
-    });
-    
-    let candidate = 1;
-    while (usedIndices.has(candidate)) {
-        candidate++;
+        if (!found) return k;
+        k++;
     }
-    return candidate;
 }
 
 function isNameDuplicateGlobal(newName, currentGlobalKey, type) {
