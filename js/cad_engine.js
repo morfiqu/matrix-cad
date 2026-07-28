@@ -42,16 +42,27 @@ function bindSVGDragSelection(field, svg, state) {
     }
     
     const handleMouseDown = (e) => {
-        if (isSimulationMode) return;
+        if (state.isSimulationMode) return;
         
-        const isContactorCtrlDrag = (activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
-        if (activeTool !== 'select' && !isContactorCtrlDrag) return;
+        const currentTool = state.activeTool || 'select';
         
-        const validTargets = ['grid-cell-rect', 'cad-svg', 'grid-point'];
-        const targetClass = e.target.getAttribute('class') || '';
-        const isTargetValid = validTargets.some(cls => targetClass.includes(cls)) || e.target.tagName === 'svg' || e.target.tagName === 'SVG';
+        if (state.isPasteMode) {
+            const rect = svg.getBoundingClientRect();
+            const startX = e.clientX - rect.left;
+            const startY = e.clientY - rect.top;
+            const c = Math.floor((startX - marginX) / cellWidth);
+            const r = Math.floor((startY - marginY) / cellHeight);
+            e.stopPropagation();
+            if (window.commitPaste) window.commitPaste(field, r, c);
+            return;
+        }
         
-        if (!isTargetValid) return;
+        const isContactorCtrlDrag = (currentTool === 'contactor' && (e.ctrlKey || e.metaKey));
+        if (currentTool !== 'select' && !isContactorCtrlDrag) return;
+        
+        if (e.target.closest && e.target.closest('.inv-box, .cable-box, .pst-box, .ctc-circle')) {
+            return;
+        }
         
         e.preventDefault();
         window.getSelection()?.removeAllRanges();

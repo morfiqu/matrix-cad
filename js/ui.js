@@ -70,7 +70,7 @@ function redo(state, updateCanvasCallback) {
     updateCanvasCallback();
 }
 
-function saveToFile(fields) {
+function doSaveToFile(fields) {
     let totalPower = 0;
     let countInverters = 0;
     let countPistols = 0;
@@ -114,7 +114,7 @@ function saveToFile(fields) {
     URL.revokeObjectURL(url);
 }
 
-function loadFromFile(event, state, updateCanvasCallback) {
+function doLoadFromFile(event, state, updateCanvasCallback) {
     const file = event.target.files[0];
     if (!file) return;
     

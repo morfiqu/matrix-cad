@@ -1786,6 +1786,7 @@ window.fillAllContactorsGlobal = fillAllContactorsGlobal;
 window.copySelected = copySelected;
 window.pasteClipboard = pasteClipboard;
 window.cancelPasteMode = cancelPasteMode;
+window.commitPaste = commitPaste;
 
 window.openPropertiesForSelected = openPropertiesForSelected;
 window.closeRenameDialog = closeRenameDialog;
@@ -1795,9 +1796,9 @@ window.closeRenumberDialog = closeRenumberDialog;
 window.applyRenumbering = applyRenumbering;
 window.deleteSelectedFromContextMenu = deleteSelectedFromContextMenu;
 
-window.saveToFile = () => saveToFile(appState.fields);
+window.saveToFile = () => doSaveToFile(appState.fields);
 window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
-window.loadFromFile = (e) => loadFromFile(e, appState, updateCanvas);
+window.loadFromFile = (e) => doLoadFromFile(e, appState, updateCanvas);
 window.toggleTheme = () => document.body.classList.toggle('theme-light');
 window.undo = () => undo(appState, updateCanvas);
 window.redo = () => redo(appState, updateCanvas);
