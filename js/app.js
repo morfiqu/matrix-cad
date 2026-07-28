@@ -1688,6 +1688,13 @@ function updateActivePowerDesignMode() {
 }
 
 // Global Event Listeners & Shortcuts
+window.addEventListener('contextmenu', (e) => {
+    if (e.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
+        return;
+    }
+    e.preventDefault();
+});
+
 document.addEventListener('click', (e) => {
     const menu = document.getElementById('custom-context-menu');
     if (menu && !menu.contains(e.target)) {
