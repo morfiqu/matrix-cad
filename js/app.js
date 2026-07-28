@@ -1752,12 +1752,12 @@ window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
 });
 
-document.addEventListener('click', (e) => {
+document.addEventListener('mousedown', (e) => {
     const menu = document.getElementById('custom-context-menu');
     if (menu && !menu.contains(e.target)) {
         menu.style.display = 'none';
     }
-});
+}, true);
 
 window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
