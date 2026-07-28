@@ -53,6 +53,7 @@ function bindSVGDragSelection(field, svg, state) {
         
         if (!isTargetValid) return;
         
+        e.preventDefault();
         window.getSelection()?.removeAllRanges();
         
         const rect = svg.getBoundingClientRect();
@@ -908,7 +909,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                     const isCtcSel = selectedKeys && selectedKeys.has(ctcSelectionKey);
                     circle.setAttribute("class", `ctc-circle ${isCtcSel ? 'selected' : ''}`);
                     
-                    const isClosed = ctc.closed;
+                    const isClosed = isSimulationMode ? ctc.closed : false;
                     circle.setAttribute("fill", isClosed ? "var(--primary)" : "#1e293b");
                     if (isClosed) {
                         circle.setAttribute("filter", "drop-shadow(0 0 6px var(--primary))");
@@ -964,7 +965,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                     rect.setAttribute("rx", 2);
                     rect.setAttribute("stroke", "#000");
                     rect.setAttribute("stroke-width", "1");
-                    rect.setAttribute("fill", ctc.closed ? "var(--primary)" : "#ff4a6b");
+                    rect.setAttribute("fill", (isSimulationMode && ctc.closed) ? "var(--primary)" : "#ff4a6b");
                     rect.setAttribute("cursor", "pointer");
                     
                     rect.onmousedown = (e) => {

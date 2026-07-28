@@ -137,7 +137,11 @@ function handleCellMouseDown(e, fieldId, r, c) {
         if (field) commitPaste(field, r, c);
         return;
     }
-    if (e.shiftKey && appState.activeTool !== 'select') {
+    const isContactorCtrlDrag = (appState.activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
+    if (appState.activeTool === 'select' || isContactorCtrlDrag) {
+        return;
+    }
+    if (e.shiftKey) {
         isDrawingComponents = true;
         activeFieldId = fieldId;
     }
@@ -174,6 +178,10 @@ function handleCellClick(fieldId, r, c) {
     
     if (appState.activeTool === 'inverter') {
         if (c === 0 && r > 0 && r < field.rows - 1) {
+            if (hasPathBlockers(field, 'row', r)) {
+                alert("Нельзя установить инвертор: на пути линии находятся разделители или клеммы!");
+                return;
+            }
             const defaultNum = getLowestAvailableIndexGlobal('inverter');
             field.components[key] = { type: 'inverter', name: `Inv ${defaultNum}`, power: appState.lastEditedInverterPower, pos: 'left' };
         } else {
@@ -189,11 +197,32 @@ function handleCellClick(fieldId, r, c) {
             return;
         }
     } else if (appState.activeTool === 'cable') {
+        const isCorner = (c === 0 && r === 0) || 
+                         (c === field.cols - 1 && r === 0) || 
+                         (c === 0 && r === field.rows - 1) || 
+                         (c === field.cols - 1 && r === field.rows - 1);
+        if (isCorner) {
+            alert("Нельзя размещать элементы в углах поля!");
+            return;
+        }
         let pos = 'middle';
         if (c === 0) pos = 'left';
         else if (c === field.cols - 1) pos = 'right';
         else if (r === 0) pos = 'top';
         else if (r === field.rows - 1) pos = 'bottom';
+
+        if (pos === 'left') {
+            if (hasPathBlockers(field, 'row', r)) {
+                alert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                return;
+            }
+        } else if (pos === 'top' || pos === 'bottom') {
+            if (hasPathBlockers(field, 'col', c)) {
+                alert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                return;
+            }
+        }
+
         const defaultNum = getLowestAvailableIndexGlobal('cable');
         field.components[key] = { type: 'cable', name: `C${defaultNum}`, pos: pos };
     } else if (appState.activeTool === 'contactor') {
@@ -202,7 +231,31 @@ function handleCellClick(fieldId, r, c) {
         }
     } else if (appState.activeTool === 'breaker') {
         if (r > 0 && r < field.rows - 1 && c > 0 && c < field.cols - 1) {
-            field.contactors[key] = { type: 'horizontal', closed: false };
+            let hasRowWire = false;
+            for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                const comp = field.components[`${r}-${colCheck}`];
+                if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                    hasRowWire = true; break;
+                }
+            }
+            let hasColWire = false;
+            for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                const comp = field.components[`${rowCheck}-${c}`];
+                if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                    hasColWire = true; break;
+                }
+            }
+            if (hasRowWire && hasColWire) {
+                alert("Здесь пересечение шин! Разделитель ставится только на горизонтальную или вертикальную линию отдельно.");
+                return;
+            } else if (hasRowWire) {
+                field.contactors[key] = { type: 'horizontal', closed: false };
+            } else if (hasColWire) {
+                field.contactors[key] = { type: 'vertical', closed: false };
+            } else {
+                alert("Здесь нет проходящих шин!");
+                return;
+            }
         }
     }
     

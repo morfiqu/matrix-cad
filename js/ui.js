@@ -19,7 +19,7 @@ function createInitialState() {
         currentFieldIndex: 0,
         activeTool: 'select',
         isSimulationMode: false,
-        showPowerFlow: true,
+        showPowerFlow: false,
         selectedKeys: new Set(),
         historyStack: [],
         redoStack: [],
@@ -126,6 +126,8 @@ function loadFromFile(event, state, updateCanvasCallback) {
             if (loadedFields && loadedFields.length > 0) {
                 state.fields = loadedFields;
                 if (state.selectedKeys) state.selectedKeys.clear();
+                state.historyStack = [];
+                state.redoStack = [];
                 saveHistoryState(state);
                 updateCanvasCallback();
             } else {
