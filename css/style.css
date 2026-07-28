@@ -672,6 +672,12 @@ svg.cad-svg {
     100% { fill: #a278ff; }
 }
 
+@keyframes pulse-contactor {
+    0% { fill: #1e293b; }
+    50% { fill: #ff4a6b; }
+    100% { fill: #1e293b; }
+}
+
 .inv-box.duplicate-error {
     animation: pulse-inverter 1s infinite ease-in-out;
 }
@@ -680,6 +686,9 @@ svg.cad-svg {
 }
 .cable-box.duplicate-error {
     animation: pulse-cable 1s infinite ease-in-out;
+}
+.ctc-circle.duplicate-error, rect.duplicate-error {
+    animation: pulse-contactor 1s infinite ease-in-out;
 }
 
 .duplicate-error:not(.selected) {

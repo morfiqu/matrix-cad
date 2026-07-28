@@ -685,14 +685,37 @@ function createSvgValueBox(parent, x, y, w, h, val, rectId, action) {
     parent.appendChild(text);
 }
 
+function hasColWireGlobal(field, c) {
+    for (let r = 0; r < field.rows; r++) {
+        const comp = field.components[`${r}-${c}`];
+        if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function hasRowWireGlobal(field, r) {
+    for (let c = 0; c < field.cols; c++) {
+        const comp = field.components[`${r}-${c}`];
+        if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function hasPathBlockers(field, type, index) {
     if (type === 'row') {
         for (let colCheck = 1; colCheck < field.cols - 1; colCheck++) {
             const checkKey = `${index}-${colCheck}`;
             const compCheck = field.components[checkKey];
             const ctcCheck = field.contactors[checkKey];
-            if ((compCheck && compCheck.type === 'cable' && compCheck.pos === 'middle') || 
-                (ctcCheck && (ctcCheck.type === 'horizontal' || ctcCheck.type === 'vertical'))) {
+            
+            if (compCheck && compCheck.type === 'cable' && hasColWireGlobal(field, colCheck)) {
+                return true;
+            }
+            if (ctcCheck && ctcCheck.type === 'vertical') {
                 return true;
             }
         }
@@ -701,8 +724,11 @@ function hasPathBlockers(field, type, index) {
             const checkKey = `${rowCheck}-${index}`;
             const compCheck = field.components[checkKey];
             const ctcCheck = field.contactors[checkKey];
-            if ((compCheck && compCheck.type === 'cable' && compCheck.pos === 'middle') || 
-                (ctcCheck && (ctcCheck.type === 'horizontal' || ctcCheck.type === 'vertical'))) {
+            
+            if (compCheck && compCheck.type === 'cable' && hasRowWireGlobal(field, rowCheck)) {
+                return true;
+            }
+            if (ctcCheck && ctcCheck.type === 'horizontal') {
                 return true;
             }
         }
@@ -826,6 +852,21 @@ function drawPlacedComponents(field, svg, simulationData, state) {
     const { activePaths, pistolPowers } = simulationData;
     const { isSimulationMode, selectedKeys, onCompMouseDown, onCompDblClick, onCompContextMenu } = state;
     
+    const globalCounts = { inverter: {}, pistol: {} };
+    if (window.appState && window.appState.fields) {
+        window.appState.fields.forEach(f => {
+            for (let k in f.components) {
+                const comp = f.components[k];
+                if (comp.type === 'inverter' || comp.type === 'pistol') {
+                    const nameLower = (comp.name || '').trim().toLowerCase();
+                    if (nameLower) {
+                        globalCounts[comp.type][nameLower] = (globalCounts[comp.type][nameLower] || 0) + 1;
+                    }
+                }
+            }
+        });
+    }
+
     for (let key in field.components) {
         const parts = key.split('-');
         const r = parseInt(parts[0]);
@@ -852,6 +893,41 @@ function drawPlacedComponents(field, svg, simulationData, state) {
             baseClass = `cable-box ${activePaths && (activePaths.has(`${field.id}-cable-in-${key}`) || activePaths.has(`${field.id}-cable-out-${key}`)) ? 'active' : ''}`;
         } else if (comp.type === 'pistol') {
             baseClass = `pst-box ${activePaths && activePaths.has(`${field.id}-pst-${c}`) ? 'active' : ''}`;
+        }
+        
+        const nameLower = (comp.name || '').trim().toLowerCase();
+        const isDuplicate = globalCounts[comp.type] && globalCounts[comp.type][nameLower] > 1;
+        
+        let hasRowWire = false;
+        for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+            const compCheck = field.components[`${r}-${colCheck}`];
+            if (compCheck && (compCheck.type === 'inverter' || (compCheck.type === 'cable' && compCheck.pos !== 'middle' && compCheck.pos !== 'right'))) {
+                hasRowWire = true;
+                break;
+            }
+        }
+        let hasColWire = false;
+        for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+            const compCheck = field.components[`${rowCheck}-${c}`];
+            if (compCheck && (compCheck.type === 'pistol' || (compCheck.type === 'cable' && compCheck.pos !== 'middle' && compCheck.pos !== 'right'))) {
+                hasColWire = true;
+                break;
+            }
+        }
+
+        let isAir = false;
+        if (comp.type === 'cable') {
+            if (comp.pos === 'middle') {
+                isAir = !hasRowWire && !hasColWire;
+            } else if (comp.pos === 'right') {
+                isAir = !hasRowWire;
+            } else if (comp.pos === 'top' || comp.pos === 'bottom') {
+                isAir = !hasColWire;
+            }
+        }
+
+        if (isDuplicate || isAir) {
+            baseClass += " duplicate-error";
         }
         
         if (isSel) {
@@ -917,8 +993,15 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
     const { contactorPowers } = simulationData;
     const { isSimulationMode, showPowerFlow, selectedKeys, onCtcMouseDown, onCtcContextMenu } = state;
     
-    for (let r = 1; r < field.rows - 1; r++) {
+    for (let key in field.contactors) {
+        const parts = key.split('-');
+        const r = parseInt(parts[0]);
+        const c = parseInt(parts[1]);
+        const x = marginX + c * cellWidth;
         const y = marginY + r * cellHeight;
+        const ctc = field.contactors[key];
+        if (!ctc) continue;
+
         let hasRowWire = false;
         for (let colCheck = 0; colCheck < field.cols; colCheck++) {
             const comp = field.components[`${r}-${colCheck}`];
@@ -928,121 +1011,129 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             }
         }
         
-        for (let c = 1; c < field.cols - 1; c++) {
-            const x = marginX + c * cellWidth;
-            let hasColWire = false;
-            for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
-                const comp = field.components[`${rowCheck}-${c}`];
-                if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
-                    hasColWire = true;
-                    break;
-                }
+        let hasColWire = false;
+        for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+            const comp = field.components[`${rowCheck}-${c}`];
+            if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                hasColWire = true;
+                break;
+            }
+        }
+        
+        const ctcSelectionKey = `${field.id}-ctc-${key}`;
+        const isCtcSel = selectedKeys && selectedKeys.has(ctcSelectionKey);
+
+        let isAir = false;
+        if (!ctc.type || ctc.type === 'standard') {
+            isAir = !hasRowWire || !hasColWire;
+        } else if (ctc.type === 'horizontal') {
+            isAir = !hasRowWire;
+        } else if (ctc.type === 'vertical') {
+            isAir = !hasColWire;
+        }
+
+        if (!ctc.type || ctc.type === 'standard') {
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", x);
+            circle.setAttribute("cy", y);
+            circle.setAttribute("r", 8);
+            
+            let ctcClass = `ctc-circle ${isCtcSel ? 'selected' : ''}`;
+            if (isAir) {
+                ctcClass += " duplicate-error";
+            }
+            circle.setAttribute("class", ctcClass);
+            
+            const isClosed = isSimulationMode ? ctc.closed : false;
+            circle.setAttribute("fill", isClosed ? "var(--primary)" : "#1e293b");
+            if (isClosed) {
+                circle.setAttribute("filter", "drop-shadow(0 0 6px var(--primary))");
+            }
+            if (isAir) {
+                circle.setAttribute("stroke", "#ff4a6b");
+                circle.setAttribute("stroke-width", "2");
             }
             
-            const key = `${r}-${c}`;
+            circle.onmousedown = (e) => {
+                if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
+            };
+
+            circle.oncontextmenu = (e) => {
+                if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
+            };
+
+            svg.appendChild(circle);
+
+            if (isSimulationMode && showPowerFlow && ctc.closed && !isAir) {
+                const ctcKey = `${field.id}-ctc-${key}`;
+                const pwr = contactorPowers[ctcKey] || 0;
+                const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                pTxt.setAttribute("x", x);
+                pTxt.setAttribute("y", y - 11);
+                pTxt.setAttribute("text-anchor", "middle");
+                pTxt.setAttribute("fill", "#00ffcc");
+                pTxt.setAttribute("font-size", "10px");
+                pTxt.setAttribute("font-weight", "bold");
+                pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
+                pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
+                svg.appendChild(pTxt);
+            }
+        } else if (ctc.type === 'horizontal' || ctc.type === 'vertical') {
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             
-            if (hasRowWire && hasColWire) {
-                const ctc = field.contactors[key];
-                
-                if (ctc && (!ctc.type || ctc.type === 'standard')) {
-                    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                    circle.setAttribute("cx", x);
-                    circle.setAttribute("cy", y);
-                    circle.setAttribute("r", 8);
-                    const ctcSelectionKey = `${field.id}-ctc-${key}`;
-                    const isCtcSel = selectedKeys && selectedKeys.has(ctcSelectionKey);
-                    circle.setAttribute("class", `ctc-circle ${isCtcSel ? 'selected' : ''}`);
-                    
-                    const isClosed = isSimulationMode ? ctc.closed : false;
-                    circle.setAttribute("fill", isClosed ? "var(--primary)" : "#1e293b");
-                    if (isClosed) {
-                        circle.setAttribute("filter", "drop-shadow(0 0 6px var(--primary))");
-                    }
-                    
-                    circle.onmousedown = (e) => {
-                        if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
-                    };
+            if (ctc.type === 'horizontal') {
+                rect.setAttribute("x", x - 12);
+                rect.setAttribute("y", y - 5);
+                rect.setAttribute("width", 24);
+                rect.setAttribute("height", 10);
+            } else {
+                rect.setAttribute("x", x - 5);
+                rect.setAttribute("y", y - 12);
+                rect.setAttribute("width", 10);
+                rect.setAttribute("height", 24);
+            }
+            
+            let breakerClass = isCtcSel ? "selected" : "";
+            if (isAir) {
+                breakerClass += " duplicate-error";
+            }
+            rect.setAttribute("class", breakerClass);
+            
+            rect.setAttribute("rx", 2);
+            rect.setAttribute("stroke", isAir ? "#ff4a6b" : "#000");
+            rect.setAttribute("stroke-width", isAir ? "2" : "1");
+            rect.setAttribute("fill", (isSimulationMode && ctc.closed) ? "var(--primary)" : "#ff4a6b");
+            rect.setAttribute("cursor", "pointer");
+            
+            rect.onmousedown = (e) => {
+                if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
+            };
 
-                    circle.oncontextmenu = (e) => {
-                        if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
-                    };
+            rect.oncontextmenu = (e) => {
+                if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
+            };
 
-                    svg.appendChild(circle);
+            svg.appendChild(rect);
 
-                    if (isSimulationMode && showPowerFlow && ctc.closed) {
-                        const ctcKey = `${field.id}-ctc-${key}`;
-                        const pwr = contactorPowers[ctcKey] || 0;
-                        const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                        pTxt.setAttribute("x", x);
-                        pTxt.setAttribute("y", y - 11);
-                        pTxt.setAttribute("text-anchor", "middle");
-                        pTxt.setAttribute("fill", "#00ffcc");
-                        pTxt.setAttribute("font-size", "10px");
-                        pTxt.setAttribute("font-weight", "bold");
-                        pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
-                        pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
-                        svg.appendChild(pTxt);
-                    }
+            if (isSimulationMode && showPowerFlow && ctc.closed && !isAir) {
+                const ctcKey = `${field.id}-ctc-${key}`;
+                const pwr = contactorPowers[ctcKey] || 0;
+                const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                if (ctc.type === 'horizontal') {
+                    pTxt.setAttribute("x", x);
+                    pTxt.setAttribute("y", y - 9);
+                    pTxt.setAttribute("text-anchor", "middle");
+                } else {
+                    pTxt.setAttribute("x", x + 11);
+                    pTxt.setAttribute("y", y + 4);
+                    pTxt.setAttribute("text-anchor", "start");
                 }
-            } else if (hasRowWire || hasColWire) {
-                const ctc = field.contactors[key];
-                
-                if (ctc && (ctc.type === 'horizontal' || ctc.type === 'vertical')) {
-                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    
-                    if (ctc.type === 'horizontal') {
-                        rect.setAttribute("x", x - 12);
-                        rect.setAttribute("y", y - 5);
-                        rect.setAttribute("width", 24);
-                        rect.setAttribute("height", 10);
-                    } else {
-                        rect.setAttribute("x", x - 5);
-                        rect.setAttribute("y", y - 12);
-                        rect.setAttribute("width", 10);
-                        rect.setAttribute("height", 24);
-                    }
-                    
-                    const breakerSelectionKey = `${field.id}-ctc-${key}`;
-                    const isBreakerSel = selectedKeys && selectedKeys.has(breakerSelectionKey);
-                    rect.setAttribute("class", isBreakerSel ? "selected" : "");
-                    
-                    rect.setAttribute("rx", 2);
-                    rect.setAttribute("stroke", "#000");
-                    rect.setAttribute("stroke-width", "1");
-                    rect.setAttribute("fill", (isSimulationMode && ctc.closed) ? "var(--primary)" : "#ff4a6b");
-                    rect.setAttribute("cursor", "pointer");
-                    
-                    rect.onmousedown = (e) => {
-                        if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', breakerSelectionKey, ctc);
-                    };
-
-                    rect.oncontextmenu = (e) => {
-                        if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', breakerSelectionKey);
-                    };
-
-                    svg.appendChild(rect);
-
-                    if (isSimulationMode && showPowerFlow && ctc.closed) {
-                        const ctcKey = `${field.id}-ctc-${key}`;
-                        const pwr = contactorPowers[ctcKey] || 0;
-                        const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                        if (ctc.type === 'horizontal') {
-                            pTxt.setAttribute("x", x);
-                            pTxt.setAttribute("y", y - 9);
-                            pTxt.setAttribute("text-anchor", "middle");
-                        } else {
-                            pTxt.setAttribute("x", x + 11);
-                            pTxt.setAttribute("y", y + 4);
-                            pTxt.setAttribute("text-anchor", "start");
-                        }
-                        pTxt.setAttribute("fill", "#00ffcc");
-                        pTxt.setAttribute("font-size", "10px");
-                        pTxt.setAttribute("font-weight", "bold");
-                        pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
-                        pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
-                        svg.appendChild(pTxt);
-                    }
-                }
+                pTxt.setAttribute("fill", "#00ffcc");
+                pTxt.setAttribute("font-size", "10px");
+                pTxt.setAttribute("font-weight", "bold");
+                pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
+                pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
+                svg.appendChild(pTxt);
             }
         }
     }
