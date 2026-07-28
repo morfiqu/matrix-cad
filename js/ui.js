@@ -3,9 +3,9 @@
  * Handles undo/redo stack, sidebar stats, modal dialogs, rename wildcard logic, and file import/export.
  */
 
-export const MAX_HISTORY = 50;
+const MAX_HISTORY = 50;
 
-export function createInitialState() {
+function createInitialState() {
     return {
         fields: [
             {
@@ -32,7 +32,7 @@ export function createInitialState() {
     };
 }
 
-export function saveHistoryState(state) {
+function saveHistoryState(state) {
     const stateStr = JSON.stringify(state.fields);
     if (state.historyStack.length > 0 && state.historyStack[state.historyStack.length - 1] === stateStr) {
         return;
@@ -44,7 +44,7 @@ export function saveHistoryState(state) {
     state.redoStack = [];
 }
 
-export function undo(state, updateCanvasCallback) {
+function undo(state, updateCanvasCallback) {
     if (state.isSimulationMode) return;
     if (state.historyStack.length <= 1) return;
     
@@ -58,7 +58,7 @@ export function undo(state, updateCanvasCallback) {
     updateCanvasCallback();
 }
 
-export function redo(state, updateCanvasCallback) {
+function redo(state, updateCanvasCallback) {
     if (state.isSimulationMode) return;
     if (state.redoStack.length === 0) return;
     
@@ -70,7 +70,7 @@ export function redo(state, updateCanvasCallback) {
     updateCanvasCallback();
 }
 
-export function saveToFile(fields) {
+function saveToFile(fields) {
     let totalPower = 0;
     let countInverters = 0;
     let countPistols = 0;
@@ -114,7 +114,7 @@ export function saveToFile(fields) {
     URL.revokeObjectURL(url);
 }
 
-export function loadFromFile(event, state, updateCanvasCallback) {
+function loadFromFile(event, state, updateCanvasCallback) {
     const file = event.target.files[0];
     if (!file) return;
     
@@ -135,13 +135,4 @@ export function loadFromFile(event, state, updateCanvasCallback) {
     };
     reader.readAsText(file);
     event.target.value = '';
-}
-
-if (typeof window !== 'undefined') {
-    window.createInitialState = createInitialState;
-    window.saveHistoryState = saveHistoryState;
-    window.undo = undo;
-    window.redo = redo;
-    window.saveToFile = saveToFile;
-    window.loadFromFile = loadFromFile;
 }

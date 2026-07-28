@@ -1,13 +1,7 @@
-import { calculateSimulation } from './solver.js';
-import { renderField } from './cad_engine.js';
-import { createInitialState, saveHistoryState, undo, redo, saveToFile, loadFromFile } from './ui.js';
+const appState = createInitialState();
+window.appState = appState;
 
-const appState = (typeof window !== 'undefined' && window.createInitialState) ? window.createInitialState() : createInitialState();
-if (typeof window !== 'undefined') {
-    window.appState = appState;
-}
-
-export function updateCanvas() {
+function updateCanvas() {
     const fieldsList = document.getElementById('fields-list');
     if (!fieldsList) return;
     
@@ -15,11 +9,8 @@ export function updateCanvas() {
     
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [] };
     
-    const calcFn = (typeof window !== 'undefined' && window.calculateSimulation) ? window.calculateSimulation : calculateSimulation;
-    const drawFn = (typeof window !== 'undefined' && window.renderField) ? window.renderField : renderField;
-
     if (appState.isSimulationMode) {
-        simulationData = calcFn(appState.fields);
+        simulationData = calculateSimulation(appState.fields);
     }
     
     appState.fields.forEach((field, index) => {
@@ -55,7 +46,7 @@ export function updateCanvas() {
             onCtcMouseDown: (e, fId, r, c, type, key, ctc) => handleCtcMouseDown(e, fId, r, c, type, key, ctc)
         };
         
-        drawFn(field, svg, simulationData, renderState);
+        renderField(field, svg, simulationData, renderState);
     });
     
     updateSidebarStats(simulationData);
@@ -247,78 +238,82 @@ function updateSidebarStats(simulationData) {
     }
 }
 
-if (typeof window !== 'undefined') {
-    window.updateCanvas = updateCanvas;
-    window.setMode = function(isSim) {
-        appState.isSimulationMode = isSim;
-        document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
-        document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
-        
-        const toolbar = document.getElementById('sidebar-toolbar');
-        const outputs = document.getElementById('sidebar-pistol-outputs');
-        if (toolbar && outputs) {
-            toolbar.style.display = isSim ? 'none' : 'block';
-            outputs.style.display = isSim ? 'block' : 'none';
-        }
-        
-        updateCanvas();
-    };
+window.updateCanvas = updateCanvas;
+window.setMode = function(isSim) {
+    appState.isSimulationMode = isSim;
+    document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
+    document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
+    
+    const toolbar = document.getElementById('sidebar-toolbar');
+    const outputs = document.getElementById('sidebar-pistol-outputs');
+    if (toolbar && outputs) {
+        toolbar.style.display = isSim ? 'none' : 'block';
+        outputs.style.display = isSim ? 'block' : 'none';
+    }
+    
+    updateCanvas();
+};
 
-    window.setMenuPos = function(pos) {
-        const layout = document.getElementById('app-layout');
-        if (layout) {
-            layout.className = 'app-layout layout-' + pos;
-        }
-    };
+window.setMenuPos = function(pos) {
+    const layout = document.getElementById('app-layout');
+    if (layout) {
+        layout.className = 'app-layout layout-' + pos;
+    }
+};
 
-    window.setTool = function(tool) {
-        if (appState.isSimulationMode) return;
-        appState.activeTool = tool;
-        document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(`tool-${tool}`)?.classList.add('active');
-    };
+window.setTool = function(tool) {
+    if (appState.isSimulationMode) return;
+    appState.activeTool = tool;
+    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tool-${tool}`)?.classList.add('active');
+};
 
-    window.addNewField = function() {
-        if (appState.isSimulationMode) return;
-        appState.fields.push({ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} });
+window.addNewField = function() {
+    if (appState.isSimulationMode) return;
+    appState.fields.push({ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} });
+    saveHistoryState(appState);
+    updateCanvas();
+};
+
+window.deleteField = function(id) {
+    if (appState.isSimulationMode) return;
+    if (appState.fields.length <= 1) {
+        alert("Нельзя удалить последнее оставшееся поле!");
+        return;
+    }
+    appState.fields = appState.fields.filter(f => f.id !== id);
+    saveHistoryState(appState);
+    updateCanvas();
+};
+
+window.clearWorkspaceGlobal = function() {
+    if (appState.isSimulationMode) return;
+    if (confirm("Вы действительно хотите полностью очистить схему?")) {
+        appState.fields = [{ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} }];
         saveHistoryState(appState);
         updateCanvas();
-    };
+    }
+};
 
-    window.deleteField = function(id) {
-        if (appState.isSimulationMode) return;
-        if (appState.fields.length <= 1) {
-            alert("Нельзя удалить последнее оставшееся поле!");
-            return;
-        }
-        appState.fields = appState.fields.filter(f => f.id !== id);
-        saveHistoryState(appState);
+window.togglePowerFlow = function(checked) {
+    appState.showPowerFlow = checked;
+    if (appState.isSimulationMode) {
         updateCanvas();
-    };
+    }
+};
 
-    window.clearWorkspaceGlobal = function() {
-        if (appState.isSimulationMode) return;
-        if (confirm("Вы действительно хотите полностью очистить схему?")) {
-            appState.fields = [{ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} }];
-            saveHistoryState(appState);
-            updateCanvas();
-        }
-    };
+window.saveToFile = () => saveToFile(appState.fields);
+window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
+window.loadFromFile = (e) => loadFromFile(e, appState, updateCanvas);
+window.toggleTheme = () => document.body.classList.toggle('theme-light');
+window.undo = () => undo(appState, updateCanvas);
+window.redo = () => redo(appState, updateCanvas);
 
-    window.togglePowerFlow = function(checked) {
-        appState.showPowerFlow = checked;
-        if (appState.isSimulationMode) {
-            updateCanvas();
-        }
-    };
-
-    window.saveToFile = () => saveToFile(appState.fields);
-    window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
-    window.loadFromFile = (e) => loadFromFile(e, appState, updateCanvas);
-    window.toggleTheme = () => document.body.classList.toggle('theme-light');
-    window.undo = () => undo(appState, updateCanvas);
-    window.redo = () => redo(appState, updateCanvas);
-}
+// Warn before closing or refreshing the page
+window.addEventListener('beforeunload', function (e) {
+    e.preventDefault();
+    e.returnValue = '';
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     saveHistoryState(appState);

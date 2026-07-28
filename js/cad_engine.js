@@ -3,15 +3,15 @@
  * Handles rendering grid cells, rulers, wiring, contactors, breakers, inverters, cables, and pistols.
  */
 
-export const cellWidth = 60;
-export const cellHeight = 50;
-export const marginX = 150;
-export const marginY = 90;
+const cellWidth = 60;
+const cellHeight = 50;
+const marginX = 150;
+const marginY = 90;
 
-export function renderField(field, svg, simulationData, state) {
+function renderField(field, svg, simulationData, state) {
     const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, selectedKeys, activeTool, isPasteMode, pasteAnchorRow, pasteAnchorCol } = state;
     
-    svg.innerHTML = ''; // Clear SVG
+    svg.innerHTML = '';
     
     const svgWidth = marginX * 2 + field.cols * cellWidth;
     const svgHeight = marginY * 2 + field.rows * cellHeight;
@@ -687,8 +687,4 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             }
         }
     }
-}
-
-if (typeof window !== 'undefined') {
-    window.renderField = renderField;
 }

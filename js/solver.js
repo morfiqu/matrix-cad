@@ -4,7 +4,7 @@
  * parallel contactor branch power splitting, and pistol power accumulations.
  */
 
-export function calculateSimulation(fields) {
+function calculateSimulation(fields) {
     const activePaths = new Set();
     const contactorPowers = {};
     const pistolPowers = {};
@@ -482,8 +482,4 @@ export function calculateSimulation(fields) {
         pistolPowers,
         errorMessages
     };
-}
-
-if (typeof window !== 'undefined') {
-    window.calculateSimulation = calculateSimulation;
 }
