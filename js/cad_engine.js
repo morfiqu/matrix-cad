@@ -727,8 +727,8 @@ function drawWiring(field, svg, activePaths, state) {
             const yNeg = y + 4;
             
             for (let c = 0; c < field.cols - 1; c++) {
-                const x1 = marginX + c * cellWidth - 0.5;
-                const x2 = marginX + (c + 1) * cellWidth + 0.5;
+                const x1 = marginX + c * cellWidth;
+                const x2 = marginX + (c + 1) * cellWidth;
                 
                 const wirePId = `${field.id}-wire-row-p-seg-${r}-${c}`;
                 const wireNId = `${field.id}-wire-row-n-seg-${r}-${c}`;
@@ -782,8 +782,8 @@ function drawWiring(field, svg, activePaths, state) {
             const xNeg = x + 4;
 
             for (let r = 0; r < field.rows - 1; r++) {
-                const y1 = marginY + r * cellHeight - 0.5;
-                const y2 = marginY + (r + 1) * cellHeight + 0.5;
+                const y1 = marginY + r * cellHeight;
+                const y2 = marginY + (r + 1) * cellHeight;
                 
                 const wirePId = `${field.id}-wire-col-p-seg-${c}-${r}`;
                 const wireNId = `${field.id}-wire-col-n-seg-${c}-${r}`;
