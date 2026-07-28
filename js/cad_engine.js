@@ -25,7 +25,7 @@ function renderField(field, svg, simulationData, state) {
         drawCenteredResizeButtons(field, svg, state);
     }
     
-    drawWiring(field, svg, activePaths, state);
+    drawWiring(field, svg, activePaths, state, simulationData);
     drawPlacedComponents(field, svg, simulationData, state);
     drawGridPointsAndContactors(field, svg, simulationData, state);
     
@@ -736,7 +736,33 @@ function hasPathBlockers(field, type, index) {
     return false;
 }
 
-function drawWiring(field, svg, activePaths, state) {
+function drawWiring(field, svg, activePaths, state, simulationData) {
+    const isAnim = state && state.isSimulationMode && state.showPowerFlow;
+
+    if (isAnim) {
+        let defs = svg.querySelector('defs');
+        if (!defs) {
+            defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            svg.appendChild(defs);
+        }
+        if (!defs.querySelector('#arrow')) {
+            const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+            marker.setAttribute('id', 'arrow');
+            marker.setAttribute('viewBox', '0 0 10 10');
+            marker.setAttribute('refX', '7');
+            marker.setAttribute('refY', '5');
+            marker.setAttribute('markerWidth', '6');
+            marker.setAttribute('markerHeight', '6');
+            marker.setAttribute('orient', 'auto-start-reverse');
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute('d', 'M 0 1.5 L 8 5 L 0 8.5 z');
+            path.setAttribute('fill', '#00d2ff');
+            marker.appendChild(path);
+            defs.appendChild(marker);
+        }
+    }
+
     for (let r = 1; r < field.rows - 1; r++) {
         const y = marginY + r * cellHeight;
         let hasRowWire = false;
@@ -761,16 +787,28 @@ function drawWiring(field, svg, activePaths, state) {
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
-                const isAnim = state && state.isSimulationMode && state.showPowerFlow;
+                let drawX1 = x1, drawX2 = x2;
+                if (isActiveP && isAnim) {
+                    const dir = simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                    if (dir === 'left') {
+                        drawX1 = x2;
+                        drawX2 = x1;
+                    }
+                }
 
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                lineP.setAttribute("x1", x1);
+                lineP.setAttribute("x1", drawX1);
                 lineP.setAttribute("y1", yPos);
-                lineP.setAttribute("x2", x2);
+                lineP.setAttribute("x2", drawX2);
                 lineP.setAttribute("y2", yPos);
-                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''} ${isActiveP && isAnim ? 'animating' : ''}`);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
                 lineP.setAttribute("id", wirePId);
-                if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
+                if (isActiveP) {
+                    lineP.setAttribute("stroke", "#ff7788");
+                    if (isAnim) {
+                        lineP.setAttribute("marker-end", "url(#arrow)");
+                    }
+                }
                 svg.appendChild(lineP);
 
                 const lineN = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -778,7 +816,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineN.setAttribute("y1", yNeg);
                 lineN.setAttribute("x2", x2);
                 lineN.setAttribute("y2", yNeg);
-                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
+                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''}`);
                 lineN.setAttribute("id", wireNId);
                 if (isActiveN) lineN.setAttribute("stroke", "#ffffff");
                 svg.appendChild(lineN);
@@ -788,7 +826,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineNInner.setAttribute("y1", yNeg);
                 lineNInner.setAttribute("x2", x2);
                 lineNInner.setAttribute("y2", yNeg);
-                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
+                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''}`);
                 svg.appendChild(lineNInner);
             }
         }
@@ -817,16 +855,29 @@ function drawWiring(field, svg, activePaths, state) {
                 const wireNId = `${field.id}-wire-col-n-seg-${c}-${r}`;
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
-                const isAnim = state && state.isSimulationMode && state.showPowerFlow;
+
+                let drawY1 = y1, drawY2 = y2;
+                if (isActiveP && isAnim) {
+                    const dir = simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                    if (dir === 'up') {
+                        drawY1 = y2;
+                        drawY2 = y1;
+                    }
+                }
 
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 lineP.setAttribute("x1", xPos);
-                lineP.setAttribute("y1", y1);
+                lineP.setAttribute("y1", drawY1);
                 lineP.setAttribute("x2", xPos);
-                lineP.setAttribute("y2", y2);
-                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''} ${isActiveP && isAnim ? 'animating' : ''}`);
+                lineP.setAttribute("y2", drawY2);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
                 lineP.setAttribute("id", wirePId);
-                if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
+                if (isActiveP) {
+                    lineP.setAttribute("stroke", "#ff7788");
+                    if (isAnim) {
+                        lineP.setAttribute("marker-end", "url(#arrow)");
+                    }
+                }
                 svg.appendChild(lineP);
 
                 const lineN = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -834,7 +885,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineN.setAttribute("y1", y1);
                 lineN.setAttribute("x2", xNeg);
                 lineN.setAttribute("y2", y2);
-                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
+                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''}`);
                 lineN.setAttribute("id", wireNId);
                 if (isActiveN) lineN.setAttribute("stroke", "#ffffff");
                 svg.appendChild(lineN);
@@ -844,7 +895,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineNInner.setAttribute("y1", y1);
                 lineNInner.setAttribute("x2", xNeg);
                 lineNInner.setAttribute("y2", y2);
-                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
+                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''}`);
                 svg.appendChild(lineNInner);
             }
         }

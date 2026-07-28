@@ -464,36 +464,6 @@ svg.cad-svg {
     stroke-linecap: square;
 }
 
-/* Animated flow for active wires when toggle is active */
-.wire-p.active.animating {
-    stroke-dasharray: 8 8;
-    animation: flow-p 1s linear infinite;
-}
-.wire-n.active.animating {
-    stroke-dasharray: 8 8;
-    animation: flow-n 1s linear infinite;
-}
-.wire-n-inner.active.animating {
-    stroke-dasharray: 8 8;
-    animation: flow-n 1s linear infinite;
-}
-
-@keyframes flow-p {
-    from {
-        stroke-dashoffset: 16;
-    }
-    to {
-        stroke-dashoffset: 0;
-    }
-}
-@keyframes flow-n {
-    from {
-        stroke-dashoffset: 0;
-    }
-    to {
-        stroke-dashoffset: 16;
-    }
-}
 
 .ruler-text {
     font-family: 'Space Grotesk', sans-serif;

@@ -11,6 +11,7 @@ function calculateSimulation(fields) {
     const errorMessages = [];
     const invReachesPistol = new Set();
     const invReachedCables = new Set();
+    const flowDirections = {};
     
     // Check for duplicate inverter/pistol IDs
     const nameCounts = { inverter: {}, pistol: {} };
@@ -87,10 +88,16 @@ function calculateSimulation(fields) {
                         const minC = Math.min(current.prevC, current.c);
                         activePaths.add(`${current.fieldId}-wire-row-p-seg-${current.r}-${minC}`);
                         activePaths.add(`${current.fieldId}-wire-row-n-seg-${current.r}-${minC}`);
+                        const direction = current.c > current.prevC ? 'right' : 'left';
+                        flowDirections[`${current.fieldId}-wire-row-p-seg-${current.r}-${minC}`] = direction;
+                        flowDirections[`${current.fieldId}-wire-row-n-seg-${current.r}-${minC}`] = direction;
                     } else if (current.type === 'col' && current.prevR !== undefined) {
                         const minR = Math.min(current.prevR, current.r);
                         activePaths.add(`${current.fieldId}-wire-col-p-seg-${current.c}-${minR}`);
                         activePaths.add(`${current.fieldId}-wire-col-n-seg-${current.c}-${minR}`);
+                        const direction = current.r > current.prevR ? 'down' : 'up';
+                        flowDirections[`${current.fieldId}-wire-col-p-seg-${current.c}-${minR}`] = direction;
+                        flowDirections[`${current.fieldId}-wire-col-n-seg-${current.c}-${minR}`] = direction;
                     }
                     
                     const cKey = `${current.r}-${current.c}`;
@@ -390,6 +397,7 @@ function calculateSimulation(fields) {
         activePaths,
         contactorPowers,
         pistolPowers,
-        errorMessages
+        errorMessages,
+        flowDirections
     };
 }
