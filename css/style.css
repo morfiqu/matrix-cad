@@ -709,3 +709,16 @@ svg.cad-svg {
 .ruler-plus-group:hover {
     opacity: 1;
 }
+
+/* Hide HTML number input spinner arrows */
+#inline-size-input::-webkit-outer-spin-button,
+#inline-size-input::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+#inline-size-input,
+input[type=number] {
+    -moz-appearance: textfield;
+}

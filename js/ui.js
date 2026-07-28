@@ -125,6 +125,7 @@ function doLoadFromFile(event, state, updateCanvasCallback) {
             const loadedFields = Array.isArray(data) ? data : (data.fields || null);
             if (loadedFields && loadedFields.length > 0) {
                 state.fields = loadedFields;
+                state.activeTool = 'select';
                 if (state.selectedKeys) state.selectedKeys.clear();
                 state.historyStack = [];
                 state.redoStack = [];

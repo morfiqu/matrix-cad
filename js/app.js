@@ -1031,8 +1031,10 @@ function updatePastePreview(field, svg, anchorR, anchorC) {
     if (!layer) {
         layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         layer.setAttribute('class', 'paste-preview-layer');
+        layer.setAttribute('pointer-events', 'none');
         svg.appendChild(layer);
     }
+    layer.setAttribute('pointer-events', 'none');
     layer.innerHTML = '';
     
     const valid = isPastePositionValid(field, anchorR, anchorC);
@@ -1695,22 +1697,29 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     
+    const isCtrl = e.ctrlKey || e.metaKey;
     const keyLower = e.key ? e.key.toLowerCase() : '';
     const code = e.code || '';
 
-    if ((e.ctrlKey || e.metaKey) && (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я')) {
+    const isZ = (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я');
+    const isY = (code === 'KeyY' || keyLower === 'y' || keyLower === 'н');
+    const isC = (code === 'KeyC' || keyLower === 'c' || keyLower === 'с');
+    const isV = (code === 'KeyV' || keyLower === 'v' || keyLower === 'м');
+    const isA = (code === 'KeyA' || keyLower === 'a' || keyLower === 'ф');
+
+    if (isCtrl && !e.shiftKey && isZ) {
         e.preventDefault();
         undo(appState, updateCanvas);
-    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyY' || keyLower === 'y' || keyLower === 'н' || (e.shiftKey && (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я')))) {
+    } else if (isCtrl && (isY || (e.shiftKey && isZ))) {
         e.preventDefault();
         redo(appState, updateCanvas);
-    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyC' || keyLower === 'c' || keyLower === 'с')) {
+    } else if (isCtrl && isC) {
         e.preventDefault();
         copySelected();
-    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyV' || keyLower === 'v' || keyLower === 'м')) {
+    } else if (isCtrl && isV) {
         e.preventDefault();
         pasteClipboard();
-    } else if ((e.ctrlKey || e.metaKey) && (code === 'KeyA' || keyLower === 'a' || keyLower === 'ф')) {
+    } else if (isCtrl && isA) {
         e.preventDefault();
         appState.selectedKeys.clear();
         appState.fields.forEach(f => {
