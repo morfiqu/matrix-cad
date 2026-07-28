@@ -9,7 +9,7 @@ const marginX = 150;
 const marginY = 90;
 
 function renderField(field, svg, simulationData, state) {
-    const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, selectedKeys, activeTool, isPasteMode, pasteAnchorRow, pasteAnchorCol } = state;
+    const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, selectedKeys } = state;
     
     svg.innerHTML = '';
     
@@ -28,10 +28,279 @@ function renderField(field, svg, simulationData, state) {
     drawWiring(field, svg, activePaths, state);
     drawPlacedComponents(field, svg, simulationData, state);
     drawGridPointsAndContactors(field, svg, simulationData, state);
+    
+    bindSVGDragSelection(field, svg, state);
+}
+
+function bindSVGDragSelection(field, svg, state) {
+    const { isSimulationMode, activeTool, selectedKeys, onUpdateCanvas, onSaveHistoryState } = state;
+    let dragStart = null;
+    let selectionBox = null;
+    
+    const handleMouseDown = (e) => {
+        if (isSimulationMode) return;
+        
+        const isContactorCtrlDrag = (activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
+        if (activeTool !== 'select' && !isContactorCtrlDrag) return;
+        
+        const validTargets = ['grid-cell-rect', 'cad-svg', 'grid-point'];
+        const targetClass = e.target.getAttribute('class') || '';
+        const isTargetValid = validTargets.some(cls => targetClass.includes(cls)) || e.target.tagName === 'svg' || e.target.tagName === 'SVG';
+        
+        if (!isTargetValid) return;
+        
+        e.preventDefault();
+        
+        const rect = svg.getBoundingClientRect();
+        const startX = e.clientX - rect.left;
+        const startY = e.clientY - rect.top;
+        
+        dragStart = { x: startX, y: startY };
+        
+        if (!isContactorCtrlDrag && !e.ctrlKey && !e.metaKey) {
+            selectedKeys.clear();
+            if (onUpdateCanvas) onUpdateCanvas();
+            return;
+        }
+        
+        let previewGroup = null;
+        if (isContactorCtrlDrag) {
+            previewGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            previewGroup.setAttribute("class", "contactor-previews");
+            svg.appendChild(previewGroup);
+        }
+        
+        selectionBox = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        if (isContactorCtrlDrag) {
+            selectionBox.setAttribute("class", "selection-box contactor-drag");
+            selectionBox.setAttribute("fill", "rgba(180, 0, 255, 0.12)");
+            selectionBox.setAttribute("stroke", "#b400ff");
+            selectionBox.setAttribute("stroke-width", "1.5");
+            selectionBox.setAttribute("stroke-dasharray", "4 3");
+        } else {
+            selectionBox.setAttribute("class", "selection-box window");
+        }
+        selectionBox.setAttribute("x", startX);
+        selectionBox.setAttribute("y", startY);
+        selectionBox.setAttribute("width", 0);
+        selectionBox.setAttribute("height", 0);
+        svg.appendChild(selectionBox);
+        
+        const onMouseMove = (ev) => {
+            if (!dragStart || !selectionBox) return;
+            const rBound = svg.getBoundingClientRect();
+            const currentX = ev.clientX - rBound.left;
+            const currentY = ev.clientY - rBound.top;
+            
+            const x = Math.min(dragStart.x, currentX);
+            const y = Math.min(dragStart.y, currentY);
+            const width = Math.abs(dragStart.x - currentX);
+            const height = Math.abs(dragStart.y - currentY);
+            
+            selectionBox.setAttribute("x", x);
+            selectionBox.setAttribute("y", y);
+            selectionBox.setAttribute("width", width);
+            selectionBox.setAttribute("height", height);
+            
+            if (isContactorCtrlDrag) {
+                previewGroup.innerHTML = "";
+                const x2 = x + width;
+                const y2 = y + height;
+                
+                for (let r = 1; r < field.rows - 1; r++) {
+                    const cy = marginY + r * cellHeight;
+                    
+                    let hasRowWire = false;
+                    for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                        const comp = field.components[`${r}-${colCheck}`];
+                        if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                            hasRowWire = true;
+                            break;
+                        }
+                    }
+                    
+                    for (let c = 1; c < field.cols - 1; c++) {
+                        const cx = marginX + c * cellWidth;
+                        const inside = (cx >= x && cx <= x2 && cy >= y && cy <= y2);
+                        if (!inside) continue;
+                        
+                        let hasColWire = false;
+                        for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                            const comp = field.components[`${rowCheck}-${c}`];
+                            if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                                hasColWire = true;
+                                break;
+                            }
+                        }
+                        
+                        const key = `${r}-${c}`;
+                        if (hasRowWire && hasColWire && !field.components[key] && !field.contactors[key]) {
+                            const circ = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                            circ.setAttribute("cx", cx);
+                            circ.setAttribute("cy", cy);
+                            circ.setAttribute("r", 7);
+                            circ.setAttribute("fill", "rgba(0, 240, 255, 0.4)");
+                            circ.setAttribute("stroke", "var(--primary)");
+                            circ.setAttribute("stroke-width", "1.5");
+                            circ.setAttribute("stroke-dasharray", "2 1");
+                            previewGroup.appendChild(circ);
+                        }
+                    }
+                }
+            } else {
+                if (currentX >= dragStart.x) {
+                    selectionBox.setAttribute("class", "selection-box window");
+                } else {
+                    selectionBox.setAttribute("class", "selection-box crossing");
+                }
+            }
+        };
+        
+        const onMouseUp = (ev) => {
+            if (!dragStart || !selectionBox) return;
+            
+            const rBound = svg.getBoundingClientRect();
+            const currentX = ev.clientX - rBound.left;
+            const currentY = ev.clientY - rBound.top;
+            
+            const x1 = Math.min(dragStart.x, currentX);
+            const y1 = Math.min(dragStart.y, currentY);
+            const w = Math.abs(dragStart.x - currentX);
+            const h = Math.abs(dragStart.y - currentY);
+            const x2 = x1 + w;
+            const y2 = y1 + h;
+            
+            if (isContactorCtrlDrag) {
+                let contactorsPlaced = false;
+                if (w > 3 || h > 3) {
+                    for (let r = 1; r < field.rows - 1; r++) {
+                        const cy = marginY + r * cellHeight;
+                        
+                        let hasRowWire = false;
+                        for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                            const comp = field.components[`${r}-${colCheck}`];
+                            if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                                hasRowWire = true;
+                                break;
+                            }
+                        }
+                        
+                        for (let c = 1; c < field.cols - 1; c++) {
+                            const cx = marginX + c * cellWidth;
+                            const inside = (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2);
+                            if (!inside) continue;
+                            
+                            let hasColWire = false;
+                            for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                                const comp = field.components[`${rowCheck}-${c}`];
+                                if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                                    hasColWire = true;
+                                    break;
+                                }
+                            }
+                            
+                            const key = `${r}-${c}`;
+                            if (hasRowWire && hasColWire && !field.components[key] && !field.contactors[key]) {
+                                field.contactors[key] = { type: 'standard', closed: false };
+                                contactorsPlaced = true;
+                            }
+                        }
+                    }
+                }
+                
+                if (previewGroup && previewGroup.parentNode) {
+                    previewGroup.parentNode.removeChild(previewGroup);
+                }
+                
+                if (contactorsPlaced && onSaveHistoryState) {
+                    onSaveHistoryState();
+                }
+            } else {
+                const isWindow = (currentX >= dragStart.x);
+                
+                if (w > 3 || h > 3) {
+                    for (let key in field.components) {
+                        const parts = key.split('-');
+                        const r = parseInt(parts[0]);
+                        const c = parseInt(parts[1]);
+                        const cx = marginX + c * cellWidth;
+                        const cy = marginY + r * cellHeight;
+                        
+                        const compX1 = cx - 24;
+                        const compX2 = cx + 24;
+                        const compY1 = cy - 12;
+                        const compY2 = cy + 12;
+                        
+                        let match = false;
+                        if (isWindow) {
+                            match = (compX1 >= x1 && compX2 <= x2 && compY1 >= y1 && compY2 <= y2);
+                        } else {
+                            match = (compX2 >= x1 && compX1 <= x2 && compY2 >= y1 && compY1 <= y2);
+                        }
+                        
+                        if (match) {
+                            selectedKeys.add(`${field.id}-comp-${key}`);
+                        }
+                    }
+                    
+                    for (let key in field.contactors) {
+                        const parts = key.split('-');
+                        const r = parseInt(parts[0]);
+                        const c = parseInt(parts[1]);
+                        const cx = marginX + c * cellWidth;
+                        const cy = marginY + r * cellHeight;
+                        const ctc = field.contactors[key];
+                        
+                        let ctcX1 = cx - 8;
+                        let ctcX2 = cx + 8;
+                        let ctcY1 = cy - 8;
+                        let ctcY2 = cy + 8;
+                        
+                        if (ctc && (ctc.type === 'horizontal' || ctc.type === 'vertical')) {
+                            if (ctc.type === 'horizontal') {
+                                ctcX1 = cx - 12; ctcX2 = cx + 12;
+                                ctcY1 = cy - 5; ctcY2 = cy + 5;
+                            } else {
+                                ctcX1 = cx - 5; ctcX2 = cx + 5;
+                                ctcY1 = cy - 12; ctcY2 = cy + 12;
+                            }
+                        }
+                        
+                        let match = false;
+                        if (isWindow) {
+                            match = (ctcX1 >= x1 && ctcX2 <= x2 && ctcY1 >= y1 && ctcY2 <= y2);
+                        } else {
+                            match = (ctcX2 >= x1 && ctcX1 <= x2 && ctcY2 >= y1 && ctcY1 <= y2);
+                        }
+                        
+                        if (match) {
+                            selectedKeys.add(`${field.id}-ctc-${key}`);
+                        }
+                    }
+                }
+            }
+            
+            if (selectionBox && selectionBox.parentNode) {
+                selectionBox.parentNode.removeChild(selectionBox);
+            }
+            dragStart = null;
+            selectionBox = null;
+            
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            
+            if (onUpdateCanvas) onUpdateCanvas();
+        };
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
+    
+    svg.addEventListener('mousedown', handleMouseDown);
 }
 
 function drawGridCells(field, svg, state) {
-    const { isSimulationMode, isPasteMode, onCellClick, onCellHover } = state;
+    const { isSimulationMode, activeTool, onCellClick } = state;
     
     for (let r = 0; r < field.rows; r++) {
         const y = marginY + r * cellHeight;
@@ -58,11 +327,12 @@ function drawGridCells(field, svg, state) {
             }
             
             rect.onmousedown = (e) => {
+                if (isSimulationMode) return;
+                const isContactorCtrlDrag = (activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
+                if (activeTool === 'select' || isContactorCtrlDrag) {
+                    return;
+                }
                 if (onCellClick) onCellClick(e, field.id, r, c);
-            };
-
-            rect.onmouseenter = (e) => {
-                if (onCellHover) onCellHover(e, field, svg, r, c);
             };
 
             svg.appendChild(rect);
@@ -71,7 +341,7 @@ function drawGridCells(field, svg, state) {
 }
 
 function drawRulers(field, svg, state) {
-    const { isSimulationMode, onInsertCol, onDeleteCol, onInsertRow, onDeleteRow } = state;
+    const { isSimulationMode, onDeleteCol, onDeleteRow, onInsertCol, onInsertRow } = state;
     
     for (let c = 0; c < field.cols; c++) {
         const x = marginX + c * cellWidth;
@@ -566,7 +836,7 @@ function drawPlacedComponents(field, svg, simulationData, state) {
 
 function drawGridPointsAndContactors(field, svg, simulationData, state) {
     const { contactorPowers } = simulationData;
-    const { isSimulationMode, showPowerFlow, selectedKeys, onCtcMouseDown } = state;
+    const { isSimulationMode, showPowerFlow, selectedKeys, onCtcMouseDown, onCtcContextMenu } = state;
     
     for (let r = 1; r < field.rows - 1; r++) {
         const y = marginY + r * cellHeight;
@@ -613,6 +883,11 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                     circle.onmousedown = (e) => {
                         if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
                     };
+
+                    circle.oncontextmenu = (e) => {
+                        if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
+                    };
+
                     svg.appendChild(circle);
 
                     if (isSimulationMode && showPowerFlow && ctc.closed) {
@@ -661,6 +936,11 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                     rect.onmousedown = (e) => {
                         if (onCtcMouseDown) onCtcMouseDown(e, field.id, r, c, 'ctc', breakerSelectionKey, ctc);
                     };
+
+                    rect.oncontextmenu = (e) => {
+                        if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', breakerSelectionKey);
+                    };
+
                     svg.appendChild(rect);
 
                     if (isSimulationMode && showPowerFlow && ctc.closed) {

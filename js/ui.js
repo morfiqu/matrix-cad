@@ -136,3 +136,39 @@ function loadFromFile(event, state, updateCanvasCallback) {
     reader.readAsText(file);
     event.target.value = '';
 }
+
+function migrateComponentsOnResize(field, oldRows, oldCols, newRows, newCols) {
+    let migratedComponents = {};
+    let migratedContactors = {};
+
+    for (let key in field.components) {
+        const parts = key.split('-');
+        let r = parseInt(parts[0]);
+        let c = parseInt(parts[1]);
+        const comp = field.components[key];
+
+        if (r === oldRows - 1) {
+            r = newRows - 1;
+        }
+        if (c === oldCols - 1) {
+            c = newCols - 1;
+        }
+
+        if (r < newRows && c < newCols) {
+            migratedComponents[`${r}-${c}`] = comp;
+        }
+    }
+
+    for (let key in field.contactors) {
+        const parts = key.split('-');
+        let r = parseInt(parts[0]);
+        let c = parseInt(parts[1]);
+
+        if (r < newRows - 1 && c < newCols - 1) {
+            migratedContactors[`${r}-${c}`] = field.contactors[key];
+        }
+    }
+
+    field.components = migratedComponents;
+    field.contactors = migratedContactors;
+}
