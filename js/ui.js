@@ -46,7 +46,7 @@ function saveHistoryState(state) {
     console.log(`[CAD History] Saved state #${state.historyStack.length}`);
 }
 
-function undo(state, updateCanvasCallback) {
+function doUndo(state, updateCanvasCallback) {
     console.log(`[CAD Undo] Triggered! SimMode: ${state.isSimulationMode}, History length: ${state.historyStack.length}`);
     if (state.isSimulationMode) return;
     if (state.historyStack.length <= 1) {
@@ -65,7 +65,7 @@ function undo(state, updateCanvasCallback) {
     console.log(`[CAD Undo] Successfully reverted to state #${state.historyStack.length}`);
 }
 
-function redo(state, updateCanvasCallback) {
+function doRedo(state, updateCanvasCallback) {
     if (state.isSimulationMode) return;
     if (state.redoStack.length === 0) return;
     
