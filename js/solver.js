@@ -70,8 +70,8 @@ function calculateSimulation(fields) {
                     }
                 }
                 if (hasRowWire) {
-                    if (startC > 0) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC - 1, prevC: startC, path: [] });
-                    if (startC < field.cols - 1) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC + 1, prevC: startC, path: [] });
+                    if (startC > 0) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC - 1, prevC: startC, path: [], transitionCtcs: [] });
+                    if (startC < field.cols - 1) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC + 1, prevC: startC, path: [], transitionCtcs: [] });
                 }
                 
                 while (globalQueue.length > 0) {
@@ -98,7 +98,7 @@ function calculateSimulation(fields) {
                     const cellComp = f.components[cKey];
                     let currentPath = current.path ? [...current.path] : [];
                     
-                    if (ctc && ctc.closed) {
+                    if (ctc && ctc.closed && (ctc.type === 'horizontal' || ctc.type === 'vertical')) {
                         const ctcGlobalKey = `${current.fieldId}-ctc-${cKey}`;
                         if (!currentPath.includes(ctcGlobalKey)) {
                             currentPath.push(ctcGlobalKey);
@@ -112,7 +112,10 @@ function calculateSimulation(fields) {
                             pistolPowers[uid] = (pistolPowers[uid] || 0) + invPower;
                             reachedPistols.add(`${current.fieldId}-${cKey}`);
                             invReachesPistol.add(`${field.id}-${key}`);
-                            pathContactorsForInv.push(currentPath);
+                            pathContactorsForInv.push({
+                                breakers: currentPath,
+                                transitions: current.transitionCtcs || []
+                            });
                         } else if (cellComp.type === 'cable') {
                             activePaths.add(`${current.fieldId}-cable-out-${cKey}`);
                             activePaths.add(`${current.fieldId}-cable-in-${cKey}`);
@@ -153,12 +156,12 @@ function calculateSimulation(fields) {
                                         }
                                         
                                         if (oHasRow && oR > 0 && oR < otherField.rows - 1) {
-                                            if (oC > 0) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, prevC: oC, path: currentPath });
-                                            if (oC < otherField.cols - 1) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, prevC: oC, path: currentPath });
+                                            if (oC > 0) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                            if (oC < otherField.cols - 1) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                         }
                                         if (oHasCol && oC > 0 && oC < otherField.cols - 1) {
-                                            if (oR > 0) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, prevR: oR, path: currentPath });
-                                            if (oR < otherField.rows - 1) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, prevR: oR, path: currentPath });
+                                            if (oR > 0) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                            if (oR < otherField.rows - 1) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                         }
                                     }
                                 }
@@ -168,7 +171,12 @@ function calculateSimulation(fields) {
                     
                     if (current.type === 'row') {
                         if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
-                            globalQueue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, prevR: current.r, path: currentPath });
+                            const ctcGlobalKey = `${current.fieldId}-ctc-${cKey}`;
+                            const nextTransitionCtcs = current.transitionCtcs ? [...current.transitionCtcs] : [];
+                            if (!nextTransitionCtcs.includes(ctcGlobalKey)) {
+                                nextTransitionCtcs.push(ctcGlobalKey);
+                            }
+                            globalQueue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: nextTransitionCtcs });
                         }
                         
                         if (current.r > 0 && current.r < f.rows - 1) {
@@ -176,20 +184,25 @@ function calculateSimulation(fields) {
                                 const nextC = current.c - 1;
                                 const isBlocked = (ctc && ctc.type === 'horizontal' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath });
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                 }
                             }
                             if (current.c < f.cols - 1) {
                                 const nextC = current.c + 1;
                                 const isBlocked = (ctc && ctc.type === 'horizontal' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath });
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                 }
                             }
                         }
                     } else if (current.type === 'col') {
                         if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
-                            globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, prevC: current.c, path: currentPath });
+                            const ctcGlobalKey = `${current.fieldId}-ctc-${cKey}`;
+                            const nextTransitionCtcs = current.transitionCtcs ? [...current.transitionCtcs] : [];
+                            if (!nextTransitionCtcs.includes(ctcGlobalKey)) {
+                                nextTransitionCtcs.push(ctcGlobalKey);
+                            }
+                            globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, prevC: current.c, path: currentPath, transitionCtcs: nextTransitionCtcs });
                         }
                         
                         if (current.c > 0 && current.c < f.cols - 1) {
@@ -197,14 +210,14 @@ function calculateSimulation(fields) {
                                 const nextR = current.r - 1;
                                 const isBlocked = (ctc && ctc.type === 'vertical' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath });
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                 }
                             }
                             if (current.r < f.rows - 1) {
                                 const nextR = current.r + 1;
                                 const isBlocked = (ctc && ctc.type === 'vertical' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath });
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
                                 }
                             }
                         }
@@ -212,15 +225,12 @@ function calculateSimulation(fields) {
                 }
 
                 if (reachedPistols.size > 0) {
-                    pathContactorsForInv.forEach(path => {
-                        path.forEach(ctcKey => {
-                            const parts = ctcKey.split('-ctc-');
-                            const fId = parseInt(parts[0]);
-                            const cKey = parts[1];
-                            const f = fields.find(x => x.id === fId);
-                            if (f && f.contactors[cKey]) {
-                                contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
-                            }
+                    pathContactorsForInv.forEach(pathData => {
+                        pathData.breakers.forEach(ctcKey => {
+                            contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
+                        });
+                        pathData.transitions.forEach(ctcKey => {
+                            contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
                         });
                     });
                 }
