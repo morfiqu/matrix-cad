@@ -1722,10 +1722,10 @@ window.addEventListener('keydown', (e) => {
 
     if (isCtrl && !e.shiftKey && isZ) {
         e.preventDefault();
-        undo(appState, updateCanvas);
+        doUndo(appState, updateCanvas);
     } else if (isCtrl && (isY || (e.shiftKey && isZ))) {
         e.preventDefault();
-        redo(appState, updateCanvas);
+        doRedo(appState, updateCanvas);
     } else if (isCtrl && isC) {
         e.preventDefault();
         copySelected();
@@ -1827,8 +1827,8 @@ window.saveToFile = () => doSaveToFile(appState.fields);
 window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
 window.loadFromFile = (e) => doLoadFromFile(e, appState, updateCanvas);
 window.toggleTheme = () => document.body.classList.toggle('theme-light');
-window.undo = () => undo(appState, updateCanvas);
-window.redo = () => redo(appState, updateCanvas);
+window.undo = () => doUndo(appState, updateCanvas);
+window.redo = () => doRedo(appState, updateCanvas);
 
 window.addEventListener('beforeunload', function (e) {
     e.preventDefault();
