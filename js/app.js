@@ -138,7 +138,9 @@ function handleCellMouseDown(e, fieldId, r, c) {
         e.stopPropagation();
         e.preventDefault();
         const field = appState.fields.find(f => f.id === fieldId);
-        if (field) commitPaste(field, r, c);
+        const anchorR = (typeof r === 'number') ? r : pasteAnchorRow;
+        const anchorC = (typeof c === 'number') ? c : pasteAnchorCol;
+        if (field) commitPaste(field, anchorR, anchorC);
         return;
     }
     const isContactorCtrlDrag = (appState.activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
@@ -155,7 +157,10 @@ function handleCellMouseDown(e, fieldId, r, c) {
 }
 
 function handleCellHover(e, fieldId, r, c) {
-    if (isPasteMode) {
+    if (isPasteMode || appState.isPasteMode) {
+        pasteAnchorRow = r;
+        pasteAnchorCol = c;
+        pasteFieldId = fieldId;
         const field = appState.fields.find(f => f.id === fieldId);
         const svg = document.getElementById(`cad-svg-${fieldId}`);
         if (field && svg) {
@@ -1703,12 +1708,13 @@ window.addEventListener('keydown', (e) => {
     const isCtrl = e.ctrlKey || e.metaKey;
     const keyLower = e.key ? e.key.toLowerCase() : '';
     const code = e.code || '';
+    const keyCode = e.keyCode || e.which || 0;
 
-    const isZ = (code === 'KeyZ' || keyLower === 'z' || keyLower === 'я');
-    const isY = (code === 'KeyY' || keyLower === 'y' || keyLower === 'н');
-    const isC = (code === 'KeyC' || keyLower === 'c' || keyLower === 'с');
-    const isV = (code === 'KeyV' || keyLower === 'v' || keyLower === 'м');
-    const isA = (code === 'KeyA' || keyLower === 'a' || keyLower === 'ф');
+    const isZ = (keyCode === 90 || code === 'KeyZ' || keyLower === 'z' || keyLower === 'я' || keyLower === '\x1a');
+    const isY = (keyCode === 89 || code === 'KeyY' || keyLower === 'y' || keyLower === 'н' || keyLower === '\x19');
+    const isC = (keyCode === 67 || code === 'KeyC' || keyLower === 'c' || keyLower === 'с' || keyLower === '\x03');
+    const isV = (keyCode === 86 || code === 'KeyV' || keyLower === 'v' || keyLower === 'м' || keyLower === '\x16');
+    const isA = (keyCode === 65 || code === 'KeyA' || keyLower === 'a' || keyLower === 'ф' || keyLower === '\x01');
 
     if (isCtrl && !e.shiftKey && isZ) {
         e.preventDefault();
