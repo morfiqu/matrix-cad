@@ -216,6 +216,10 @@ function handleCellClick(fieldId, r, c) {
         }
     } else if (appState.activeTool === 'pistol') {
         if (r === field.rows - 1 && c > 0 && c < field.cols - 1) {
+            if (hasPathBlockers(field, 'col', c)) {
+                alert("Нельзя установить пистолет: на пути линии находятся разделители или клеммы!");
+                return;
+            }
             const defaultNum = getLowestAvailableIndexGlobal('pistol');
             field.components[key] = { type: 'pistol', name: `P ${defaultNum}`, pos: 'bottom' };
         } else {
