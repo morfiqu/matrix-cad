@@ -42,6 +42,21 @@
                         Изменяйте размеры поля кнопками <strong>+ / -</strong> на линейках.
                     </div>
                 </div>
+                <div style="display: flex; flex-direction: column; align-items: center; margin-left: 8px; flex-shrink: 0;">
+                    <div style="font-size: 8px; color: var(--text-muted); margin-bottom: 2px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Панель</div>
+                    <div class="menu-pos-cross">
+                        <div></div>
+                        <button class="cross-btn" onclick="setMenuPos('top')" title="Сверху">▲</button>
+                        <div></div>
+                        
+                        <button class="cross-btn" onclick="setMenuPos('left')" title="Слева">◀</button>
+                        <div class="cross-center"></div>
+                        <button class="cross-btn" onclick="setMenuPos('right')" title="Справа">▶</button>
+                        
+                        <div></div>
+                        <button class="cross-btn" onclick="setMenuPos('bottom')" title="Снизу">▼</button>
+                    </div>
+                </div>
             </div>
 
             <div class="ui-section">
@@ -106,17 +121,86 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <h3 class="section-title" style="margin: 0;">Выходы пистолетов</h3>
                 </div>
+                <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--text-main); user-select: none;">
+                        <input type="checkbox" id="toggle-power-flow" onchange="togglePowerFlow(this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);">
+                        <span>⚡ Отображать токи (кВт)</span>
+                    </label>
+                </div>
                 <div class="routing-list" id="routing-summary">
                 </div>
+            </div>
+
+            <div class="ui-section" style="margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border);">
+                <button class="btn danger" onclick="clearWorkspaceGlobal()">Очистить всё</button>
             </div>
 
         </div>
 
         <!-- Drawing Canvas Area -->
-        <div class="workspace" id="workspace">
-            <!-- SVGs rendered dynamically by JS engine -->
+        <div class="workspace" id="workspace-canvas">
+            <div id="fields-list" style="display: flex; flex-direction: column; gap: 40px; width: 100%;"></div>
+            
+            <button class="btn active" style="margin-top: 20px; max-width: 220px; height: 44px; display: flex; align-items: center;" onclick="addNewField()">
+                ➕ Новое поле
+            </button>
+            
+            <input type="number" id="inline-size-input" class="inline-size-editor" min="2" max="30">
         </div>
 
+    </div>
+
+    <!-- Rename / Properties Component Modal -->
+    <div class="dialog-overlay" id="rename-dialog" style="display: none;">
+        <div class="dialog-box" style="max-height: 85vh; overflow-y: auto; width: 420px; max-width: 95vw;">
+            <h3 class="dialog-title" style="margin-bottom: 16px;">Редактировать параметры</h3>
+            
+            <div id="rename-dialog-sections-container" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 10px; position: sticky; bottom: 0; background: var(--bg-card); padding-top: 8px; border-top: 1px solid var(--border); z-index: 10;">
+                <button class="btn active" onclick="saveComponentRename()">Сохранить</button>
+                <button class="btn" onclick="closeRenameDialog()">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Context Menu -->
+    <div id="custom-context-menu" style="display: none; position: absolute; background-color: var(--bg-card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.4); border-radius: 6px; z-index: 10000; padding: 4px 0; min-width: 160px; font-family: 'Space Grotesk', sans-serif; font-size: 13px;">
+        <div style="padding: 8px 12px; cursor: pointer; color: var(--text-main); transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'" onclick="openPropertiesForSelected()">⚙️ Параметры</div>
+        <div id="ctx-renumber-btn" style="padding: 8px 12px; cursor: pointer; color: var(--text-main); transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'" onclick="openRenumberDialog()">🔢 Перенумеровать</div>
+        <div style="padding: 8px 12px; cursor: pointer; color: #ff4a6b; transition: background-color 0.2s; border-top: 1px solid var(--border);" onmouseover="this.style.backgroundColor='rgba(255,74,107,0.1)'" onmouseout="this.style.backgroundColor='transparent'" onclick="deleteSelectedFromContextMenu()">🗑️ Удалить</div>
+    </div>
+
+    <!-- Renumbering Components Modal -->
+    <div class="dialog-overlay" id="renumber-dialog" style="display: none;">
+        <div class="dialog-box" style="width: 380px;">
+            <h3 class="dialog-title" style="margin-bottom: 16px;">Перенумеровать компоненты</h3>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Начать нумерацию с (например: 1, a1, b5):</label>
+                <input type="text" class="dialog-input" id="renumber-start" value="1" style="width: 100%;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Направление нумерации:</label>
+                <select class="dialog-input" id="renumber-direction" style="width: 100%; background-color: var(--modal-input-bg); color: var(--modal-input-text);">
+                    <option value="L_R_T_B">Слева направо, затем сверху вниз</option>
+                    <option value="R_L_T_B">Справа налево, затем сверху вниз</option>
+                    <option value="L_R_B_T">Слева направо, затем снизу вверх</option>
+                    <option value="R_L_B_T">Справа налево, затем снизу вверх</option>
+                    <option value="T_B_L_R">Сверху вниз, затем слева направо</option>
+                    <option value="T_B_R_L">Сверху вниз, затем справа налево</option>
+                    <option value="B_T_L_R">Снизу вверх, затем слева направо</option>
+                    <option value="B_T_R_L">Снизу вверх, затем справа налево</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 10px;">
+                <button class="btn active" onclick="applyRenumbering()">Подтвердить</button>
+                <button class="btn" onclick="closeRenumberDialog()">Отмена</button>
+            </div>
+        </div>
     </div>
 
     <!-- Scripts loaded directly for 100% native file:// Explorer double-click compatibility -->

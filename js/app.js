@@ -8,10 +8,10 @@ if (typeof window !== 'undefined') {
 }
 
 export function updateCanvas() {
-    const workspace = document.getElementById('workspace');
-    if (!workspace) return;
+    const fieldsList = document.getElementById('fields-list');
+    if (!fieldsList) return;
     
-    workspace.innerHTML = '';
+    fieldsList.innerHTML = '';
     
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [] };
     
@@ -32,7 +32,7 @@ export function updateCanvas() {
         svg.className = 'cad-svg';
         
         fieldRowContainer.appendChild(svg);
-        workspace.appendChild(fieldRowContainer);
+        fieldsList.appendChild(fieldRowContainer);
         
         const renderState = {
             activePaths: simulationData.activePaths,
@@ -253,7 +253,22 @@ if (typeof window !== 'undefined') {
         appState.isSimulationMode = isSim;
         document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
         document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
+        
+        const toolbar = document.getElementById('sidebar-toolbar');
+        const outputs = document.getElementById('sidebar-pistol-outputs');
+        if (toolbar && outputs) {
+            toolbar.style.display = isSim ? 'none' : 'block';
+            outputs.style.display = isSim ? 'block' : 'none';
+        }
+        
         updateCanvas();
+    };
+
+    window.setMenuPos = function(pos) {
+        const layout = document.getElementById('app-layout');
+        if (layout) {
+            layout.className = 'app-layout layout-' + pos;
+        }
     };
 
     window.setTool = function(tool) {
@@ -279,6 +294,22 @@ if (typeof window !== 'undefined') {
         appState.fields = appState.fields.filter(f => f.id !== id);
         saveHistoryState(appState);
         updateCanvas();
+    };
+
+    window.clearWorkspaceGlobal = function() {
+        if (appState.isSimulationMode) return;
+        if (confirm("Вы действительно хотите полностью очистить схему?")) {
+            appState.fields = [{ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} }];
+            saveHistoryState(appState);
+            updateCanvas();
+        }
+    };
+
+    window.togglePowerFlow = function(checked) {
+        appState.showPowerFlow = checked;
+        if (appState.isSimulationMode) {
+            updateCanvas();
+        }
     };
 
     window.saveToFile = () => saveToFile(appState.fields);
