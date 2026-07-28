@@ -2,21 +2,24 @@ import { calculateSimulation } from './solver.js';
 import { renderField } from './cad_engine.js';
 import { createInitialState, saveHistoryState, undo, redo, saveToFile, loadFromFile } from './ui.js';
 
-// Application Global State
-const appState = createInitialState();
-
-window.appState = appState; // expose to window for inline HTML onclick handlers
+const appState = (typeof window !== 'undefined' && window.createInitialState) ? window.createInitialState() : createInitialState();
+if (typeof window !== 'undefined') {
+    window.appState = appState;
+}
 
 export function updateCanvas() {
     const workspace = document.getElementById('workspace');
     if (!workspace) return;
     
-    workspace.innerHTML = ''; // Clear workspace container
+    workspace.innerHTML = '';
     
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [] };
     
+    const calcFn = (typeof window !== 'undefined' && window.calculateSimulation) ? window.calculateSimulation : calculateSimulation;
+    const drawFn = (typeof window !== 'undefined' && window.renderField) ? window.renderField : renderField;
+
     if (appState.isSimulationMode) {
-        simulationData = calculateSimulation(appState.fields);
+        simulationData = calcFn(appState.fields);
     }
     
     appState.fields.forEach((field, index) => {
@@ -52,7 +55,7 @@ export function updateCanvas() {
             onCtcMouseDown: (e, fId, r, c, type, key, ctc) => handleCtcMouseDown(e, fId, r, c, type, key, ctc)
         };
         
-        renderField(field, svg, simulationData, renderState);
+        drawFn(field, svg, simulationData, renderState);
     });
     
     updateSidebarStats(simulationData);
@@ -244,47 +247,48 @@ function updateSidebarStats(simulationData) {
     }
 }
 
-// Bind Global UI Actions to window
-window.setMode = function(isSim) {
-    appState.isSimulationMode = isSim;
-    document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
-    document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
-    updateCanvas();
-};
+if (typeof window !== 'undefined') {
+    window.updateCanvas = updateCanvas;
+    window.setMode = function(isSim) {
+        appState.isSimulationMode = isSim;
+        document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
+        document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
+        updateCanvas();
+    };
 
-window.setTool = function(tool) {
-    if (appState.isSimulationMode) return;
-    appState.activeTool = tool;
-    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`tool-${tool}`)?.classList.add('active');
-};
+    window.setTool = function(tool) {
+        if (appState.isSimulationMode) return;
+        appState.activeTool = tool;
+        document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`tool-${tool}`)?.classList.add('active');
+    };
 
-window.addNewField = function() {
-    if (appState.isSimulationMode) return;
-    appState.fields.push({ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} });
-    saveHistoryState(appState);
-    updateCanvas();
-};
+    window.addNewField = function() {
+        if (appState.isSimulationMode) return;
+        appState.fields.push({ id: Date.now(), rows: 8, cols: 12, components: {}, contactors: {} });
+        saveHistoryState(appState);
+        updateCanvas();
+    };
 
-window.deleteField = function(id) {
-    if (appState.isSimulationMode) return;
-    if (appState.fields.length <= 1) {
-        alert("Нельзя удалить последнее оставшееся поле!");
-        return;
-    }
-    appState.fields = appState.fields.filter(f => f.id !== id);
-    saveHistoryState(appState);
-    updateCanvas();
-};
+    window.deleteField = function(id) {
+        if (appState.isSimulationMode) return;
+        if (appState.fields.length <= 1) {
+            alert("Нельзя удалить последнее оставшееся поле!");
+            return;
+        }
+        appState.fields = appState.fields.filter(f => f.id !== id);
+        saveHistoryState(appState);
+        updateCanvas();
+    };
 
-window.saveToFile = () => saveToFile(appState.fields);
-window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
-window.loadFromFile = (e) => loadFromFile(e, appState, updateCanvas);
-window.toggleTheme = () => document.body.classList.toggle('theme-light');
-window.undo = () => undo(appState, updateCanvas);
-window.redo = () => redo(appState, updateCanvas);
+    window.saveToFile = () => saveToFile(appState.fields);
+    window.triggerFileLoad = () => document.getElementById('schema-file-input')?.click();
+    window.loadFromFile = (e) => loadFromFile(e, appState, updateCanvas);
+    window.toggleTheme = () => document.body.classList.toggle('theme-light');
+    window.undo = () => undo(appState, updateCanvas);
+    window.redo = () => redo(appState, updateCanvas);
+}
 
-// On Document Ready
 document.addEventListener('DOMContentLoaded', () => {
     saveHistoryState(appState);
     updateCanvas();

@@ -265,12 +265,11 @@ export function calculateSimulation(fields) {
         }
     });
 
-    // 2. Intersection Contactors Solver (Exact Row-to-Column Transfer & Parallel Splitting)
+    // 2. Intersection Contactors Solver
     fields.forEach(field => {
         for (let r = 0; r < field.rows; r++) {
             let rowPwr = 0;
             
-            // Inverters on row r
             for (let c = 0; c < field.cols; c++) {
                 const comp = field.components[`${r}-${c}`];
                 if (comp && comp.type === 'inverter') {
@@ -281,7 +280,6 @@ export function calculateSimulation(fields) {
                 }
             }
             
-            // Cables on row r (add net power if cable receives input from external source)
             for (let c = 0; c < field.cols; c++) {
                 const comp = field.components[`${r}-${c}`];
                 if (comp && comp.type === 'cable') {
@@ -340,7 +338,6 @@ export function calculateSimulation(fields) {
             }
         }
 
-        // If a column feeding a pistol has ONLY 1 closed contactor, assign total column pistol power to it
         for (let c = 1; c < field.cols - 1; c++) {
             let pistolR = -1;
             for (let r = 0; r < field.rows; r++) {
@@ -485,4 +482,8 @@ export function calculateSimulation(fields) {
         pistolPowers,
         errorMessages
     };
+}
+
+if (typeof window !== 'undefined') {
+    window.calculateSimulation = calculateSimulation;
 }

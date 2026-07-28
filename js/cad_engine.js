@@ -18,24 +18,15 @@ export function renderField(field, svg, simulationData, state) {
     svg.setAttribute("width", svgWidth);
     svg.setAttribute("height", svgHeight);
     
-    // 1. Draw Grid Cells
     drawGridCells(field, svg, state);
-    
-    // 2. Draw Rulers
     drawRulers(field, svg, state);
     
-    // 3. Draw Centered Resize Buttons
     if (!isSimulationMode) {
         drawCenteredResizeButtons(field, svg, state);
     }
     
-    // 4. Draw Wiring
     drawWiring(field, svg, activePaths, state);
-    
-    // 5. Draw Placed Components (Inverters, Cables, Pistols)
     drawPlacedComponents(field, svg, simulationData, state);
-    
-    // 6. Draw Contactors & Breakers
     drawGridPointsAndContactors(field, svg, simulationData, state);
 }
 
@@ -82,7 +73,6 @@ function drawGridCells(field, svg, state) {
 function drawRulers(field, svg, state) {
     const { isSimulationMode, onInsertCol, onDeleteCol, onInsertRow, onDeleteRow } = state;
     
-    // Draw Top Ruler
     for (let c = 0; c < field.cols; c++) {
         const x = marginX + c * cellWidth;
         
@@ -193,7 +183,6 @@ function drawRulers(field, svg, state) {
         }
     }
 
-    // Draw Left Ruler
     for (let r = 0; r < field.rows; r++) {
         const y = marginY + r * cellHeight;
         
@@ -394,8 +383,8 @@ function drawWiring(field, svg, activePaths, state) {
                 
                 const wirePId = `${field.id}-wire-row-p-seg-${r}-${c}`;
                 const wireNId = `${field.id}-wire-row-n-seg-${r}-${c}`;
-                const isActiveP = activePaths.has(wirePId);
-                const isActiveN = activePaths.has(wireNId);
+                const isActiveP = activePaths && activePaths.has(wirePId);
+                const isActiveN = activePaths && activePaths.has(wireNId);
 
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 lineP.setAttribute("x1", x1);
@@ -449,8 +438,8 @@ function drawWiring(field, svg, activePaths, state) {
                 
                 const wirePId = `${field.id}-wire-col-p-seg-${c}-${r}`;
                 const wireNId = `${field.id}-wire-col-n-seg-${c}-${r}`;
-                const isActiveP = activePaths.has(wirePId);
-                const isActiveN = activePaths.has(wireNId);
+                const isActiveP = activePaths && activePaths.has(wirePId);
+                const isActiveN = activePaths && activePaths.has(wireNId);
 
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 lineP.setAttribute("x1", xPos);
@@ -698,4 +687,8 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             }
         }
     }
+}
+
+if (typeof window !== 'undefined') {
+    window.renderField = renderField;
 }

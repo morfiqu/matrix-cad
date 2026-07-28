@@ -136,3 +136,12 @@ export function loadFromFile(event, state, updateCanvasCallback) {
     reader.readAsText(file);
     event.target.value = '';
 }
+
+if (typeof window !== 'undefined') {
+    window.createInitialState = createInitialState;
+    window.saveHistoryState = saveHistoryState;
+    window.undo = undo;
+    window.redo = redo;
+    window.saveToFile = saveToFile;
+    window.loadFromFile = loadFromFile;
+}
