@@ -639,6 +639,31 @@ function createSvgValueBox(parent, x, y, w, h, val, rectId, action) {
     parent.appendChild(text);
 }
 
+function hasPathBlockers(field, type, index) {
+    if (type === 'row') {
+        for (let colCheck = 1; colCheck < field.cols - 1; colCheck++) {
+            const checkKey = `${index}-${colCheck}`;
+            const compCheck = field.components[checkKey];
+            const ctcCheck = field.contactors[checkKey];
+            if ((compCheck && compCheck.type === 'cable' && compCheck.pos === 'middle') || 
+                (ctcCheck && (ctcCheck.type === 'horizontal' || ctcCheck.type === 'vertical'))) {
+                return true;
+            }
+        }
+    } else if (type === 'col') {
+        for (let rowCheck = 1; rowCheck < field.rows - 1; rowCheck++) {
+            const checkKey = `${rowCheck}-${index}`;
+            const compCheck = field.components[checkKey];
+            const ctcCheck = field.contactors[checkKey];
+            if ((compCheck && compCheck.type === 'cable' && compCheck.pos === 'middle') || 
+                (ctcCheck && (ctcCheck.type === 'horizontal' || ctcCheck.type === 'vertical'))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function drawWiring(field, svg, activePaths, state) {
     for (let r = 1; r < field.rows - 1; r++) {
         const y = marginY + r * cellHeight;

@@ -16,6 +16,11 @@ let lastCompClickKey = null;
 let isDrawingComponents = false;
 let activeFieldId = null;
 
+// Copy / Paste Clipboard State
+let clipboard = null;
+let isPasteMode = false;
+let pasteFieldId = null;
+
 window.addEventListener('mouseup', () => {
     isDrawingComponents = false;
     activeFieldId = null;
@@ -78,6 +83,7 @@ function updateCanvas() {
             onCellMouseDown: (e, fId, r, c) => handleCellMouseDown(e, fId, r, c),
             onCellHover: (e, fId, r, c) => handleCellHover(e, fId, r, c),
             onAdjustSize: (fId, type, delta) => adjustSize(fId, type, delta),
+            onManualSize: (fId, type, rectId) => setManualSizeInline(fId, type, rectId),
             onInsertCol: (f, c) => insertColAtIndex(f, c),
             onDeleteCol: (f, c) => deleteColAtIndex(f, c),
             onInsertRow: (f, r) => insertRowAtIndex(f, r),
@@ -92,7 +98,23 @@ function updateCanvas() {
         renderField(field, svg, simulationData, renderState);
     });
     
-    updateSidebarStats(simulationData);
+    if (appState.isSimulationMode) {
+        renderPistolSummaries(simulationData);
+        const errorPanel = document.getElementById('simulation-errors');
+        const errorContent = document.getElementById('error-list-content');
+        if (errorPanel && errorContent) {
+            if (simulationData.errorMessages && simulationData.errorMessages.length > 0) {
+                errorContent.innerHTML = simulationData.errorMessages.map(msg => `<div>• ${msg}</div>`).join('');
+                errorPanel.style.display = 'block';
+            } else {
+                errorPanel.style.display = 'none';
+            }
+        }
+    } else {
+        updateActivePowerDesignMode();
+        const errorPanel = document.getElementById('simulation-errors');
+        if (errorPanel) errorPanel.style.display = 'none';
+    }
 }
 
 function setTool(tool) {
@@ -109,6 +131,12 @@ function setTool(tool) {
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
+    if (isPasteMode) {
+        e.stopPropagation();
+        const field = appState.fields.find(f => f.id === fieldId);
+        if (field) commitPaste(field, r, c);
+        return;
+    }
     if (e.shiftKey && appState.activeTool !== 'select') {
         isDrawingComponents = true;
         activeFieldId = fieldId;
@@ -117,6 +145,14 @@ function handleCellMouseDown(e, fieldId, r, c) {
 }
 
 function handleCellHover(e, fieldId, r, c) {
+    if (isPasteMode) {
+        const field = appState.fields.find(f => f.id === fieldId);
+        const svg = document.getElementById(`cad-svg-${fieldId}`);
+        if (field && svg) {
+            updatePastePreview(field, svg, r, c);
+        }
+        return;
+    }
     if (isDrawingComponents && appState.activeTool !== 'select' && activeFieldId === fieldId) {
         handleCellClick(fieldId, r, c);
     }
@@ -328,58 +364,38 @@ function startGroupDrag(e, fieldId, startR, startC, startType) {
         }
     });
     
-    let lastRow = startR;
-    let lastCol = startC;
-    
-    const onMouseMove = (ev) => {
+    const draggedCompKeys = new Set(draggedItems.filter(i => i.type === 'comp').map(i => `${i.r}-${i.c}`));
+    const draggedCtcKeys = new Set(draggedItems.filter(i => i.type === 'ctc').map(i => `${i.r}-${i.c}`));
+
+    const onMouseMove = (moveEvent) => {
         if (!isDraggingGroup) return;
         
-        const svgEl = document.getElementById(`cad-svg-${fieldId}`);
-        if (!svgEl) return;
-        
         const rect = svgEl.getBoundingClientRect();
-        const mouseX = ev.clientX - rect.left;
-        const mouseY = ev.clientY - rect.top;
+        const mouseX = moveEvent.clientX - rect.left;
+        const mouseY = moveEvent.clientY - rect.top;
         
-        const currentCol = Math.round((mouseX - marginX) / cellWidth);
-        const currentRow = Math.round((mouseY - marginY) / cellHeight);
+        const currentC = Math.round((mouseX - 150) / 60);
+        const currentR = Math.round((mouseY - 90) / 50);
         
-        if (currentCol === lastCol && currentRow === lastRow) return;
-        lastCol = currentCol;
-        lastRow = currentRow;
+        const deltaR = currentR - startR;
+        const deltaC = currentC - startC;
         
-        const deltaR = currentRow - dragStartCell.r;
-        const deltaC = currentCol - dragStartCell.c;
-        
-        if (deltaR === 0 && deltaC === 0) {
-            field.components = JSON.parse(JSON.stringify(initialComponents));
-            field.contactors = JSON.parse(JSON.stringify(initialContactors));
-            appState.selectedKeys = new Set(initialSelectedKeys);
-            updateCanvas();
-            
-            lastValidComponents = JSON.parse(JSON.stringify(initialComponents));
-            lastValidContactors = JSON.parse(JSON.stringify(initialContactors));
-            lastValidSelectedKeys = new Set(initialSelectedKeys);
-            return;
-        }
+        if (deltaR === 0 && deltaC === 0) return;
         
         let isValidMove = true;
         const newComponents = {};
         const newContactors = {};
         const newSelectedKeys = new Set();
         
-        const draggedCompKeys = new Set();
-        const draggedCtcKeys = new Set();
-        draggedItems.forEach(item => {
-            if (item.type === 'comp') draggedCompKeys.add(`${item.r}-${item.c}`);
-            if (item.type === 'ctc') draggedCtcKeys.add(`${item.r}-${item.c}`);
-        });
-        
         for (let k in initialComponents) {
-            if (!draggedCompKeys.has(k)) newComponents[k] = initialComponents[k];
+            if (!draggedCompKeys.has(k)) {
+                newComponents[k] = initialComponents[k];
+            }
         }
         for (let k in initialContactors) {
-            if (!draggedCtcKeys.has(k)) newContactors[k] = initialContactors[k];
+            if (!draggedCtcKeys.has(k)) {
+                newContactors[k] = initialContactors[k];
+            }
         }
         
         const targetKeysUsed = new Set();
@@ -519,60 +535,125 @@ function adjustSize(fieldId, type, delta) {
     if (appState.isSimulationMode) return;
     const field = appState.fields.find(f => f.id === fieldId);
     if (!field) return;
-    
+
     const oldRows = field.rows;
     const oldCols = field.cols;
-    
-    let newRows = oldRows;
-    let newCols = oldCols;
-    
-    if (type === 'rows') newRows = Math.max(4, Math.min(24, oldRows + delta));
-    else newCols = Math.max(4, Math.min(32, oldCols + delta));
-    
-    if (newRows === oldRows && newCols === oldCols) return;
-    
-    field.rows = newRows;
-    field.cols = newCols;
-    
-    migrateComponentsOnResize(field, oldRows, oldCols, newRows, newCols);
+
+    let targetRows = oldRows;
+    let targetCols = oldCols;
+
+    if (type === 'rows') {
+        targetRows = Math.max(4, Math.min(24, oldRows + delta));
+    } else {
+        targetCols = Math.max(4, Math.min(32, oldCols + delta));
+    }
+
+    if (delta < 0) {
+        if (type === 'rows' && !isSizeReductionSafe(field, 'rows', targetRows, oldRows)) {
+            alert(`Нельзя уменьшить высоту! На удаляемой строке (${oldRows - 3}) находятся установленные элементы.`);
+            return;
+        }
+        if (type === 'cols' && !isSizeReductionSafe(field, 'cols', targetCols, oldCols)) {
+            alert(`Нельзя уменьшить ширину! На удаляемом столбце (${oldCols - 3}) находятся установленные элементы.`);
+            return;
+        }
+    }
+
+    field.rows = targetRows;
+    field.cols = targetCols;
+
+    migrateComponentsOnResize(field, oldRows, oldCols, field.rows, field.cols);
     saveHistoryState(appState);
     updateCanvas();
 }
 
-function insertColAtIndex(field, c) {
+function isSizeReductionSafe(field, type, newSize, oldSize) {
+    if (newSize >= oldSize) return true;
+    if (type === 'rows') {
+        for (let r = newSize - 1; r <= oldSize - 2; r++) {
+            for (let c = 0; c < oldSize; c++) {
+                if (field.components[`${r}-${c}`]) return false;
+                if (field.contactors[`${r}-${c}`]) return false;
+            }
+        }
+    } else {
+        for (let c = newSize - 1; c <= oldSize - 2; c++) {
+            for (let r = 0; r < oldSize; r++) {
+                if (field.components[`${r}-${c}`]) return false;
+                if (field.contactors[`${r}-${c}`]) return false;
+            }
+        }
+    }
+    return true;
+}
+
+function setManualSizeInline(fieldId, type, rectId) {
     if (appState.isSimulationMode) return;
-    if (field.cols >= 32) {
-        alert("Максимальное количество столбцов - 32!");
-        return;
-    }
-    const newComponents = {};
-    for (let key in field.components) {
-        const parts = key.split('-');
-        const r = parseInt(parts[0]);
-        const col = parseInt(parts[1]);
-        if (col <= c) {
-            newComponents[key] = field.components[key];
-        } else {
-            newComponents[`${r}-${col + 1}`] = field.components[key];
-        }
-    }
-    field.components = newComponents;
+    const field = appState.fields.find(f => f.id === fieldId);
+    if (!field) return;
     
-    const newContactors = {};
-    for (let key in field.contactors) {
-        const parts = key.split('-');
-        const r = parseInt(parts[0]);
-        const col = parseInt(parts[1]);
-        if (col <= c) {
-            newContactors[key] = field.contactors[key];
-        } else {
-            newContactors[`${r}-${col + 1}`] = field.contactors[key];
+    const input = document.getElementById('inline-size-input');
+    const rectElement = document.getElementById(rectId);
+    const workspaceCanvas = document.getElementById('workspace-canvas');
+    if (!input || !rectElement || !workspaceCanvas) return;
+    
+    const rectBound = rectElement.getBoundingClientRect();
+    const containerBound = workspaceCanvas.getBoundingClientRect();
+    
+    input.style.left = `${rectBound.left - containerBound.left + workspaceCanvas.scrollLeft}px`;
+    input.style.top = `${rectBound.top - containerBound.top + workspaceCanvas.scrollTop}px`;
+    input.style.width = `${rectBound.width}px`;
+    input.style.height = `${rectBound.height}px`;
+    input.style.display = 'block';
+    
+    const currentVal = type === 'rows' ? (field.rows - 2) : (field.cols - 2);
+    input.value = currentVal;
+    input.focus();
+    input.select();
+    
+    const saveInlineValue = () => {
+        const val = parseInt(input.value);
+        if (!isNaN(val) && val >= 2 && val <= 30) {
+            const oldRows = field.rows;
+            const oldCols = field.cols;
+            
+            const targetRows = type === 'rows' ? (val + 2) : oldRows;
+            const targetCols = type === 'cols' ? (val + 2) : oldCols;
+
+            if (type === 'rows' && targetRows < oldRows) {
+                if (!isSizeReductionSafe(field, 'rows', targetRows, oldRows)) {
+                    alert(`Нельзя уменьшить высоту! На удаляемых строках находятся установленные элементы.`);
+                    input.style.display = 'none';
+                    return;
+                }
+            }
+            if (type === 'cols' && targetCols < oldCols) {
+                if (!isSizeReductionSafe(field, 'cols', targetCols, oldCols)) {
+                    alert(`Нельзя уменьшить ширину! На удаляемых столбцах находятся установленные элементы.`);
+                    input.style.display = 'none';
+                    return;
+                }
+            }
+
+            field.rows = targetRows;
+            field.cols = targetCols;
+
+            migrateComponentsOnResize(field, oldRows, oldCols, field.rows, field.cols);
+            saveHistoryState(appState);
+            updateCanvas();
         }
-    }
-    field.contactors = newContactors;
-    field.cols++;
-    saveHistoryState(appState);
-    updateCanvas();
+        input.style.display = 'none';
+    };
+    
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            saveInlineValue();
+        } else if (e.key === 'Escape') {
+            input.style.display = 'none';
+        }
+    };
+    
+    input.onblur = saveInlineValue;
 }
 
 function deleteColAtIndex(field, c) {
@@ -604,7 +685,6 @@ function deleteColAtIndex(field, c) {
         }
     }
     field.components = newComponents;
-    
     const newContactors = {};
     for (let key in field.contactors) {
         const parts = key.split('-');
@@ -618,42 +698,6 @@ function deleteColAtIndex(field, c) {
     }
     field.contactors = newContactors;
     field.cols--;
-    saveHistoryState(appState);
-    updateCanvas();
-}
-
-function insertRowAtIndex(field, r) {
-    if (appState.isSimulationMode) return;
-    if (field.rows >= 24) {
-        alert("Максимальное количество строк - 24!");
-        return;
-    }
-    const newComponents = {};
-    for (let key in field.components) {
-        const parts = key.split('-');
-        const row = parseInt(parts[0]);
-        const col = parseInt(parts[1]);
-        if (row <= r) {
-            newComponents[key] = field.components[key];
-        } else {
-            newComponents[`${row + 1}-${col}`] = field.components[key];
-        }
-    }
-    field.components = newComponents;
-    
-    const newContactors = {};
-    for (let key in field.contactors) {
-        const parts = key.split('-');
-        const row = parseInt(parts[0]);
-        const col = parseInt(parts[1]);
-        if (row <= r) {
-            newContactors[key] = field.components[key];
-        } else {
-            newContactors[`${row + 1}-${col}`] = field.contactors[key];
-        }
-    }
-    field.contactors = newContactors;
-    field.rows++;
     saveHistoryState(appState);
     updateCanvas();
 }
@@ -687,7 +731,6 @@ function deleteRowAtIndex(field, r) {
         }
     }
     field.components = newComponents;
-    
     const newContactors = {};
     for (let key in field.contactors) {
         const parts = key.split('-');
@@ -705,143 +748,334 @@ function deleteRowAtIndex(field, r) {
     updateCanvas();
 }
 
-function deleteSelected() {
+function insertColAtIndex(field, c) {
     if (appState.isSimulationMode) return;
-    if (appState.selectedKeys.size === 0) return;
+    if (field.cols >= 32) {
+        alert("Максимальное количество столбцов - 32!");
+        return;
+    }
+    const newComponents = {};
+    for (let key in field.components) {
+        const parts = key.split('-');
+        const r = parseInt(parts[0]);
+        const col = parseInt(parts[1]);
+        if (col <= c) {
+            newComponents[key] = field.components[key];
+        } else {
+            newComponents[`${r}-${col + 1}`] = field.components[key];
+        }
+    }
+    field.components = newComponents;
+    const newContactors = {};
+    for (let key in field.contactors) {
+        const parts = key.split('-');
+        const r = parseInt(parts[0]);
+        const col = parseInt(parts[1]);
+        if (col <= c) {
+            newContactors[key] = field.contactors[key];
+        } else {
+            newContactors[`${r}-${col + 1}`] = field.contactors[key];
+        }
+    }
+    field.contactors = newContactors;
+    field.cols++;
+    saveHistoryState(appState);
+    updateCanvas();
+}
+
+function insertRowAtIndex(field, r) {
+    if (appState.isSimulationMode) return;
+    if (field.rows >= 24) {
+        alert("Максимальное количество строк - 24!");
+        return;
+    }
+    const newComponents = {};
+    for (let key in field.components) {
+        const parts = key.split('-');
+        const row = parseInt(parts[0]);
+        const col = parseInt(parts[1]);
+        if (row <= r) {
+            newComponents[key] = field.components[key];
+        } else {
+            newComponents[`${row + 1}-${col}`] = field.components[key];
+        }
+    }
+    field.components = newComponents;
+    const newContactors = {};
+    for (let key in field.contactors) {
+        const parts = key.split('-');
+        const row = parseInt(parts[0]);
+        const col = parseInt(parts[1]);
+        if (row <= r) {
+            newContactors[key] = field.contactors[key];
+        } else {
+            newContactors[`${row + 1}-${col}`] = field.contactors[key];
+        }
+    }
+    field.contactors = newContactors;
+    field.rows++;
+    saveHistoryState(appState);
+    updateCanvas();
+}
+
+function fillAllContactorsGlobal() {
+    if (appState.isSimulationMode) return;
+    let totalAdded = 0;
     
+    appState.fields.forEach(field => {
+        for (let r = 1; r < field.rows - 1; r++) {
+            let hasRowWire = false;
+            for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                const comp = field.components[`${r}-${colCheck}`];
+                if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                    hasRowWire = true;
+                    break;
+                }
+            }
+            
+            for (let c = 1; c < field.cols - 1; c++) {
+                let hasColWire = false;
+                for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                    const comp = field.components[`${rowCheck}-${c}`];
+                    if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                        hasColWire = true;
+                        break;
+                    }
+                }
+                
+                if (hasRowWire && hasColWire) {
+                    const key = `${r}-${c}`;
+                    if (!field.contactors[key] && !field.components[key]) {
+                        field.contactors[key] = { type: 'standard', closed: false };
+                        totalAdded++;
+                    }
+                }
+            }
+        }
+    });
+    
+    if (totalAdded > 0) {
+        saveHistoryState(appState);
+        updateCanvas();
+    } else {
+        alert("Нет подходящих пересечений активных шин для установки контакторов!");
+    }
+}
+
+// Copy & Paste Clipboard Implementation
+function copySelected() {
+    if (appState.isSimulationMode || appState.selectedKeys.size === 0) return;
+    const items = [];
     appState.selectedKeys.forEach(selKey => {
         const parts = selKey.split('-');
         const fId = parseInt(parts[0]);
         const type = parts[1];
         const r = parseInt(parts[2]);
         const c = parseInt(parts[3]);
-        const key = `${r}-${c}`;
-        
         const field = appState.fields.find(f => f.id === fId);
-        if (field) {
-            if (type === 'comp') delete field.components[key];
-            else if (type === 'ctc') delete field.contactors[key];
+        if (!field) return;
+        if (type === 'comp' && field.components[`${r}-${c}`]) {
+            items.push({ type: 'comp', r, c, data: JSON.parse(JSON.stringify(field.components[`${r}-${c}`])) });
+        } else if (type === 'ctc' && field.contactors[`${r}-${c}`]) {
+            items.push({ type: 'ctc', r, c, data: JSON.parse(JSON.stringify(field.contactors[`${r}-${c}`])) });
         }
     });
+    if (items.length === 0) return;
+    const minR = Math.min(...items.map(i => i.r));
+    const minC = Math.min(...items.map(i => i.c));
+    const fieldId = parseInt([...appState.selectedKeys][0].split('-')[0]);
+    clipboard = {
+        fieldId,
+        items: items.map(i => ({ type: i.type, relR: i.r - minR, relC: i.c - minC, data: i.data }))
+    };
+}
+
+function pasteClipboard() {
+    if (appState.isSimulationMode || !clipboard) return;
+    isPasteMode = true;
+    pasteFieldId = clipboard.fieldId;
+    document.body.style.cursor = 'crosshair';
+}
+
+function cancelPasteMode() {
+    if (!isPasteMode) return;
+    isPasteMode = false;
+    document.body.style.cursor = '';
+    appState.fields.forEach(f => {
+        const svg = document.getElementById(`cad-svg-${f.id}`);
+        if (svg) {
+            const prev = svg.querySelector('.paste-preview-layer');
+            if (prev) prev.remove();
+        }
+    });
+}
+
+function isPastePositionValid(field, anchorR, anchorC) {
+    if (!clipboard) return false;
+    for (let item of clipboard.items) {
+        const tr = anchorR + item.relR;
+        const tc = anchorC + item.relC;
+        if (tr < 0 || tr >= field.rows || tc < 0 || tc >= field.cols) return false;
+        const isCorner = (tc === 0 && tr === 0) || (tc === field.cols - 1 && tr === 0) ||
+                         (tc === 0 && tr === field.rows - 1) || (tc === field.cols - 1 && tr === field.rows - 1);
+        if (isCorner) return false;
+        const key = `${tr}-${tc}`;
+        if (field.components[key] || field.contactors[key]) return false;
+        if (item.type === 'comp') {
+            if (item.data.type === 'inverter' && (tc !== 0 || tr <= 0 || tr >= field.rows - 1)) return false;
+            if (item.data.type === 'pistol' && (tr !== field.rows - 1 || tc <= 0 || tc >= field.cols - 1)) return false;
+        }
+        if (item.type === 'ctc') {
+            if (tr <= 0 || tr >= field.rows - 1 || tc <= 0 || tc >= field.cols - 1) return false;
+            if (!item.data.type || item.data.type === 'standard') {
+                let hasRowWire = false;
+                for (let cc = 0; cc < field.cols; cc++) {
+                    const comp = field.components[`${tr}-${cc}`];
+                    if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                        hasRowWire = true; break;
+                    }
+                }
+                if (!hasRowWire) return false;
+                let hasColWire = false;
+                for (let rr = 0; rr < field.rows; rr++) {
+                    const comp = field.components[`${rr}-${tc}`];
+                    if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                        hasColWire = true; break;
+                    }
+                }
+                if (!hasColWire) return false;
+            }
+            if (item.data.type === 'horizontal' || item.data.type === 'vertical') {
+                let hasRowWire = false;
+                for (let cc = 0; cc < field.cols; cc++) {
+                    const comp = field.components[`${tr}-${cc}`];
+                    if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                        hasRowWire = true; break;
+                    }
+                }
+                let hasColWire = false;
+                for (let rr = 0; rr < field.rows; rr++) {
+                    const comp = field.components[`${rr}-${tc}`];
+                    if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
+                        hasColWire = true; break;
+                    }
+                }
+                if (!hasRowWire && !hasColWire) return false;
+            }
+        }
+    }
+    return true;
+}
+
+function updatePastePreview(field, svg, anchorR, anchorC) {
+    if (!clipboard) return;
+    let layer = svg.querySelector('.paste-preview-layer');
+    if (!layer) {
+        layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        layer.setAttribute('class', 'paste-preview-layer');
+        svg.appendChild(layer);
+    }
+    layer.innerHTML = '';
     
+    const valid = isPastePositionValid(field, anchorR, anchorC);
+    const color = valid ? 'rgba(0,220,130,0.55)' : 'rgba(255,60,60,0.55)';
+    const stroke = valid ? '#00dc82' : '#ff3c3c';
+    
+    for (let item of clipboard.items) {
+        const tr = anchorR + item.relR;
+        const tc = anchorC + item.relC;
+        const x = 100 + tc * 60 - 60/2 + 4;
+        const y = 60 + tr * 50 - 50/2 + 4;
+        const w = 60 - 8;
+        const h = 50 - 8;
+        
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', y);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
+        rect.setAttribute('rx', 4);
+        rect.setAttribute('fill', color);
+        rect.setAttribute('stroke', stroke);
+        rect.setAttribute('stroke-width', '2');
+        rect.setAttribute('pointer-events', 'none');
+        layer.appendChild(rect);
+        
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', 100 + tc * 60);
+        label.setAttribute('y', 60 + tr * 50 + 5);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', valid ? '#fff' : '#fcc');
+        label.setAttribute('pointer-events', 'none');
+        label.textContent = item.data.name || (item.type === 'ctc' ? 'К' : '?');
+        layer.appendChild(label);
+    }
+}
+
+function commitPaste(field, anchorR, anchorC) {
+    if (!clipboard || !isPastePositionValid(field, anchorR, anchorC)) return;
     appState.selectedKeys.clear();
+    for (let item of clipboard.items) {
+        const tr = anchorR + item.relR;
+        const tc = anchorC + item.relC;
+        const key = `${tr}-${tc}`;
+        const newData = JSON.parse(JSON.stringify(item.data));
+        if (item.type === 'comp' && newData.type === 'cable') {
+            if (tc === 0) newData.pos = 'left';
+            else if (tc === field.cols - 1) newData.pos = 'right';
+            else if (tr === 0) newData.pos = 'top';
+            else if (tr === field.rows - 1) newData.pos = 'bottom';
+            else newData.pos = 'middle';
+        }
+        if (item.type === 'comp') {
+            field.components[key] = newData;
+            appState.selectedKeys.add(`${field.id}-comp-${key}`);
+        } else {
+            field.contactors[key] = newData;
+            appState.selectedKeys.add(`${field.id}-ctc-${key}`);
+        }
+    }
+    cancelPasteMode();
     saveHistoryState(appState);
     updateCanvas();
 }
 
 function getLowestAvailableIndexGlobal(type) {
-    let k = 1;
-    while (true) {
-        let nameToCheck = type === 'inverter' ? `Inv ${k}` : (type === 'pistol' ? `P ${k}` : `C${k}`);
-        let found = false;
-        for (let f of appState.fields) {
-            for (let key in f.components) {
-                if (f.components[key].name.toLowerCase() === nameToCheck.toLowerCase()) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) return k;
-        k++;
-    }
-}
-
-function updateSidebarStats(simulationData) {
-    let totalInverterPower = 0;
-    let countInverters = 0;
-    let countPistols = 0;
-    let countContactors = 0;
-    let countBreakers = 0;
+    const usedIndices = new Set();
+    const prefix = type === 'inverter' ? "Inv " : (type === 'pistol' ? "P " : "C");
     
     appState.fields.forEach(field => {
         for (let key in field.components) {
             const comp = field.components[key];
-            if (comp.type === 'inverter') {
-                totalInverterPower += (comp.power || 60);
-                countInverters++;
-            } else if (comp.type === 'pistol') {
-                countPistols++;
-            }
-        }
-        for (let key in field.contactors) {
-            const ctc = field.contactors[key];
-            if (!ctc.type || ctc.type === 'standard') countContactors++;
-            else countBreakers++;
-        }
-    });
-    
-    const powerValEl = document.getElementById('stat-active-power');
-    if (powerValEl) {
-        powerValEl.innerText = `${totalInverterPower} кВт`;
-    }
-    
-    const compCountEl = document.getElementById('stat-components-count');
-    if (compCountEl) {
-        const totalReal = (countContactors + countBreakers) * 2;
-        compCountEl.innerHTML = `
-            Всего контакторов: <strong>${totalReal} шт</strong> (коммут: ${countContactors*2}, раздел: ${countBreakers*2})<br>
-            Инверторы: ${countInverters} шт | Пистолеты: ${countPistols} шт
-        `;
-    }
-}
-
-let currentSelectedCompsForRename = [];
-
-function openPropertiesForSelected() {
-    const menu = document.getElementById('custom-context-menu');
-    if (menu) menu.style.display = 'none';
-    
-    currentSelectedCompsForRename = [];
-    appState.selectedKeys.forEach(selKey => {
-        const parts = selKey.split('-');
-        if (parts[1] === 'comp') {
-            const fId = parseInt(parts[0]);
-            const r = parseInt(parts[2]);
-            const c = parseInt(parts[3]);
-            const field = appState.fields.find(f => f.id === fId);
-            if (field) {
-                const comp = field.components[`${r}-${c}`];
-                if (comp) {
-                    currentSelectedCompsForRename.push({ fId, r, c, comp, globalKey: `${fId}-${r}-${c}` });
+            if (comp.type === type && comp.name.startsWith(prefix)) {
+                const suffix = comp.name.slice(prefix.length).trim();
+                const num = parseInt(suffix);
+                if (!isNaN(num)) {
+                    usedIndices.add(num);
                 }
             }
         }
     });
     
-    if (currentSelectedCompsForRename.length === 0) return;
-    
-    const grouped = {};
-    currentSelectedCompsForRename.forEach(item => {
-        const t = item.comp.type;
-        if (!grouped[t]) grouped[t] = [];
-        grouped[t].push(item);
-    });
-    
-    const container = document.getElementById('rename-dialog-sections-container');
-    if (!container) return;
-    container.innerHTML = "";
-    
-    for (let type in grouped) {
-        container.innerHTML += generatePropertySection(type, grouped[type]);
+    let candidate = 1;
+    while (usedIndices.has(candidate)) {
+        candidate++;
     }
-    
-    const dialog = document.getElementById('rename-dialog');
-    if (dialog) dialog.style.display = 'flex';
-    
-    const firstInput = container.querySelector('.section-name-input');
-    if (firstInput) {
-        firstInput.focus();
-        firstInput.select();
-    }
-    
-    container.querySelectorAll('.section-name-input').forEach(inp => {
-        inp.onkeydown = (e) => {
-            if (e.key === 'Enter') {
-                saveComponentRename();
+    return candidate;
+}
+
+function isNameDuplicateGlobal(newName, currentGlobalKey, type) {
+    for (let f of appState.fields) {
+        for (let key in f.components) {
+            const globalKey = `${f.id}-${key}`;
+            if (globalKey === currentGlobalKey) continue;
+            
+            const comp = f.components[key];
+            if (comp.type === type && comp.name.toLowerCase() === newName.toLowerCase()) {
+                return true;
             }
-        };
-    });
+        }
+    }
+    return false;
 }
 
 function computeWildcardDisplay(suffixes) {
@@ -883,6 +1117,35 @@ function computeWildcardDisplay(suffixes) {
     }
     
     return result || '...';
+}
+
+function applyWildcardTemplate(origSuffix, templatePattern, newPattern) {
+    if (!templatePattern || !templatePattern.includes('*')) {
+        return newPattern.replace(/\*/g, origSuffix);
+    }
+    const regexStr = '^' + templatePattern.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&').replace(/\*/g, '(.*?)') + '$';
+    const regex = new RegExp(regexStr);
+    const match = origSuffix.match(regex);
+    
+    if (match) {
+        const captured = match.slice(1);
+        let groupIdx = 0;
+        let result = '';
+        for (let i = 0; i < newPattern.length; i++) {
+            if (newPattern[i] === '*') {
+                if (groupIdx < captured.length) {
+                    result += captured[groupIdx++];
+                } else {
+                    result += captured[captured.length - 1] || '';
+                }
+            } else {
+                result += newPattern[i];
+            }
+        }
+        return result;
+    }
+    
+    return newPattern.replace(/\*/g, origSuffix);
 }
 
 function generatePropertySection(type, compsOfType) {
@@ -940,9 +1203,62 @@ function generatePropertySection(type, compsOfType) {
     return html;
 }
 
+let currentSelectedCompsForRename = [];
+
+function openPropertiesForSelected() {
+    const menu = document.getElementById('custom-context-menu');
+    if (menu) menu.style.display = 'none';
+    
+    currentSelectedCompsForRename = [];
+    appState.selectedKeys.forEach(selKey => {
+        const parts = selKey.split('-');
+        const fId = parseInt(parts[0]);
+        const type = parts[1];
+        const r = parseInt(parts[2]);
+        const c = parseInt(parts[3]);
+        const field = appState.fields.find(f => f.id === fId);
+        if (field && type === 'comp' && field.components[`${r}-${c}`]) {
+            currentSelectedCompsForRename.push({
+                globalKey: selKey,
+                fieldId: fId,
+                r, c,
+                comp: field.components[`${r}-${c}`]
+            });
+        }
+    });
+    
+    if (currentSelectedCompsForRename.length === 0) return;
+    
+    const container = document.getElementById('rename-dialog-sections-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    const grouped = {};
+    currentSelectedCompsForRename.forEach(item => {
+        const t = item.comp.type;
+        if (!grouped[t]) grouped[t] = [];
+        grouped[t].push(item);
+    });
+    
+    ['inverter', 'pistol', 'cable'].forEach(t => {
+        if (grouped[t] && grouped[t].length > 0) {
+            container.innerHTML += generatePropertySection(t, grouped[t]);
+        }
+    });
+    
+    document.getElementById('rename-dialog').style.display = 'flex';
+    
+    container.querySelectorAll('.section-name-input').forEach(inp => {
+        inp.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                saveComponentRename();
+            }
+        };
+    });
+}
+
 function closeRenameDialog() {
-    const dialog = document.getElementById('rename-dialog');
-    if (dialog) dialog.style.display = 'none';
+    document.getElementById('rename-dialog').style.display = 'none';
     currentSelectedCompsForRename = [];
 }
 
@@ -954,170 +1270,87 @@ function saveComponentRename() {
     const updates = [];
     const selectedGlobalKeys = new Set(currentSelectedCompsForRename.map(x => x.globalKey));
     
-    const isNameDuplicateExcludingSelection = (name, type) => {
-        if (type === 'cable') return false;
-        for (let f of appState.fields) {
-            for (let key in f.components) {
-                const globalKey = `${f.id}-${key}`;
-                if (selectedGlobalKeys.has(globalKey)) continue;
-                
-                const otherComp = f.components[key];
-                if (otherComp.type === type && otherComp.name.toLowerCase() === name.toLowerCase()) {
-                    return true;
+    for (let sec of sections) {
+        const type = sec.getAttribute('data-type');
+        const nameInput = sec.querySelector('.section-name-input');
+        const powerSelect = sec.querySelector('.section-power-select');
+        
+        const origTemplate = nameInput.getAttribute('data-original');
+        const newPattern = nameInput.value.trim();
+        
+        let prefix = type === 'inverter' ? "Inv " : (type === 'pistol' ? "P " : "C");
+        
+        const compsOfType = currentSelectedCompsForRename.filter(x => x.comp.type === type);
+        
+        for (let item of compsOfType) {
+            const origName = item.comp.name;
+            let origSuffix = "";
+            if (type === 'inverter') origSuffix = origName.replace(/^Inv\s+/, '');
+            else if (type === 'pistol') origSuffix = origName.replace(/^P\s+/, '');
+            else if (type === 'cable') origSuffix = origName.replace(/^C/, '');
+            
+            const newSuffix = applyWildcardTemplate(origSuffix, origTemplate, newPattern);
+            const finalName = prefix + newSuffix;
+            
+            if (isNameDuplicateGlobal(finalName, item.globalKey, type)) {
+                alert(`Имя "${finalName}" уже используется для другого элемента типа ${type}!`);
+                return;
+            }
+            
+            let newPower = item.comp.power;
+            if (type === 'inverter' && powerSelect) {
+                const val = powerSelect.value;
+                if (val !== 'mixed') {
+                    newPower = parseInt(val);
+                    appState.lastEditedInverterPower = newPower;
                 }
             }
-        }
-        return false;
-    };
-
-    for (let section of sections) {
-        const type = section.getAttribute('data-type');
-        const nameInput = section.querySelector('.section-name-input');
-        const origNameSuffix = nameInput.getAttribute('data-original');
-        const newNameSuffix = nameInput.value.trim();
-        
-        let powerVal = null;
-        let origPowerVal = null;
-        if (type === 'inverter') {
-            const powerSelect = section.querySelector('.section-power-select');
-            origPowerVal = powerSelect.getAttribute('data-original');
-            powerVal = powerSelect.value;
-        }
-        
-        if (!newNameSuffix) {
-            alert("Имя / номер не может быть пустым!");
-            return;
-        }
-        
-        const sectionComps = currentSelectedCompsForRename.filter(x => x.comp.type === type);
-        
-        let prefix = "";
-        if (type === 'inverter') prefix = "Inv ";
-        else if (type === 'pistol') prefix = "P ";
-        else if (type === 'cable') prefix = "C";
-        
-        const nameChanged = (newNameSuffix !== "..." && newNameSuffix !== origNameSuffix);
-        const powerChanged = (powerVal && powerVal !== "mixed" && powerVal !== origPowerVal);
-        
-        if (nameChanged) {
-            if (newNameSuffix.includes('*')) {
-                for (let item of sectionComps) {
-                    let origSuffix = item.comp.name;
-                    if (origSuffix.startsWith(prefix)) {
-                        origSuffix = origSuffix.slice(prefix.length);
-                    }
-                    const newSuffix = applyWildcardTemplate(origSuffix, origNameSuffix, newNameSuffix);
-                    const fullNewName = prefix + newSuffix;
-                    if (type !== 'cable' && isNameDuplicateExcludingSelection(fullNewName, type)) {
-                        alert(`Ошибка: Компонент с именем "${fullNewName}" уже существует на схеме!`);
-                        return;
-                    }
-                    const itemUpdates = { name: fullNewName };
-                    if (powerChanged) itemUpdates.power = parseInt(powerVal);
-                    updates.push({ item, itemUpdates });
-                }
-            } else if (type === 'cable') {
-                const fullNewName = prefix + newNameSuffix;
-                for (let item of sectionComps) {
-                    const itemUpdates = { name: fullNewName };
-                    updates.push({ item, itemUpdates });
-                }
-            } else if (sectionComps.length === 1) {
-                const fullNewName = prefix + newNameSuffix;
-                if (isNameDuplicateExcludingSelection(fullNewName, type)) {
-                    alert(`Ошибка: Компонент с именем "${fullNewName}" уже существует на схеме!`);
-                    return;
-                }
-                
-                const item = sectionComps[0];
-                const itemUpdates = { name: fullNewName };
-                if (powerChanged) itemUpdates.power = parseInt(powerVal);
-                updates.push({ item, itemUpdates });
-            } else {
-                let base = "";
-                let numVal = 1;
-                const match = newNameSuffix.match(/^(.*?)(\d+)$/);
-                if (match) {
-                    base = match[1];
-                    numVal = parseInt(match[2]);
-                } else {
-                    base = newNameSuffix;
-                    numVal = 1;
-                }
-                
-                for (let item of sectionComps) {
-                    let finalName = "";
-                    let checkNum = numVal;
-                    while (true) {
-                        const suffix = base + checkNum;
-                        const fullNewName = prefix + suffix;
-                        const alreadyQueued = updates.some(u => u.itemUpdates.name && u.itemUpdates.name.toLowerCase() === fullNewName.toLowerCase());
-                        if (!alreadyQueued && !isNameDuplicateExcludingSelection(fullNewName, type)) {
-                            finalName = fullNewName;
-                            numVal = checkNum + 1;
-                            break;
-                        }
-                        checkNum++;
-                    }
-                    const itemUpdates = { name: finalName };
-                    if (powerChanged) itemUpdates.power = parseInt(powerVal);
-                    updates.push({ item, itemUpdates });
-                }
-            }
-        } else if (powerChanged) {
-            sectionComps.forEach(item => {
-                updates.push({ item, itemUpdates: { power: parseInt(powerVal) } });
-            });
+            
+            updates.push({ item, finalName, newPower });
         }
     }
     
-    if (updates.length > 0) {
-        updates.forEach(({ item, itemUpdates }) => {
-            for (let prop in itemUpdates) {
-                item.comp[prop] = itemUpdates[prop];
-                if (prop === 'power' && item.comp.type === 'inverter') {
-                    appState.lastEditedInverterPower = itemUpdates.power;
-                }
+    let changed = false;
+    updates.forEach(u => {
+        if (u.item.comp.name !== u.finalName || u.item.comp.power !== u.newPower) {
+            u.item.comp.name = u.finalName;
+            if (u.item.comp.type === 'inverter') {
+                u.item.comp.power = u.newPower;
             }
-        });
+            changed = true;
+        }
+    });
+    
+    if (changed) {
         saveHistoryState(appState);
     }
-    
     closeRenameDialog();
     updateCanvas();
 }
 
-function applyWildcardTemplate(origSuffix, templatePattern, newPattern) {
-    if (!templatePattern || !templatePattern.includes('*')) {
-        return newPattern.replace(/\*/g, origSuffix);
-    }
-    const regexStr = '^' + templatePattern.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&').replace(/\*/g, '(.*?)') + '$';
-    const regex = new RegExp(regexStr);
-    const match = origSuffix.match(regex);
+function deleteSelected() {
+    if (appState.isSimulationMode || appState.selectedKeys.size === 0) return;
     
-    if (match) {
-        const captured = match.slice(1);
-        let groupIdx = 0;
-        let result = '';
-        for (let i = 0; i < newPattern.length; i++) {
-            if (newPattern[i] === '*') {
-                if (groupIdx < captured.length) {
-                    result += captured[groupIdx++];
-                } else {
-                    result += captured[captured.length - 1] || '';
-                }
-            } else {
-                result += newPattern[i];
-            }
+    appState.selectedKeys.forEach(selKey => {
+        const parts = selKey.split('-');
+        const fId = parseInt(parts[0]);
+        const type = parts[1];
+        const r = parseInt(parts[2]);
+        const c = parseInt(parts[3]);
+        const field = appState.fields.find(f => f.id === fId);
+        if (field) {
+            const key = `${r}-${c}`;
+            if (type === 'comp') delete field.components[key];
+            if (type === 'ctc') delete field.contactors[key];
         }
-        return result;
-    }
-    return newPattern.replace(/\*/g, origSuffix);
+    });
+    
+    appState.selectedKeys.clear();
+    saveHistoryState(appState);
+    updateCanvas();
 }
 
 function deleteSelectedFromContextMenu() {
-    const menu = document.getElementById('custom-context-menu');
-    if (menu) menu.style.display = 'none';
     deleteSelected();
 }
 
@@ -1130,30 +1363,31 @@ function openRenumberDialog() {
     selectedCompsForRenumber = [];
     appState.selectedKeys.forEach(selKey => {
         const parts = selKey.split('-');
-        if (parts[1] === 'comp') {
-            const fId = parseInt(parts[0]);
-            const r = parseInt(parts[2]);
-            const c = parseInt(parts[3]);
-            const field = appState.fields.find(f => f.id === fId);
-            if (field) {
-                const comp = field.components[`${r}-${c}`];
-                if (comp) selectedCompsForRenumber.push({ fId, r, c, comp });
-            }
+        const fId = parseInt(parts[0]);
+        const type = parts[1];
+        const r = parseInt(parts[2]);
+        const c = parseInt(parts[3]);
+        const field = appState.fields.find(f => f.id === fId);
+        if (field && type === 'comp' && field.components[`${r}-${c}`]) {
+            selectedCompsForRenumber.push({
+                fieldId: fId,
+                r, c,
+                comp: field.components[`${r}-${c}`]
+            });
         }
     });
     
-    if (selectedCompsForRenumber.length === 0) {
-        alert("Нет выделенных компонентов для перенумерации!");
+    if (selectedCompsForRenumber.length < 2) {
+        alert("Для массовой перенумерации нужно выделить минимум 2 элемента!");
         return;
     }
     
-    const dialog = document.getElementById('renumber-dialog');
-    if (dialog) dialog.style.display = 'flex';
+    document.getElementById('renumber-start').value = "1";
+    document.getElementById('renumber-dialog').style.display = 'flex';
 }
 
 function closeRenumberDialog() {
-    const dialog = document.getElementById('renumber-dialog');
-    if (dialog) dialog.style.display = 'none';
+    document.getElementById('renumber-dialog').style.display = 'none';
     selectedCompsForRenumber = [];
 }
 
@@ -1176,6 +1410,7 @@ function applyRenumbering() {
     }
     
     const direction = document.getElementById('renumber-direction').value;
+    
     const grouped = {};
     selectedCompsForRenumber.forEach(item => {
         const t = item.comp.type;
@@ -1186,6 +1421,7 @@ function applyRenumbering() {
     let changed = false;
     for (let type in grouped) {
         const list = grouped[type];
+        
         list.sort((a, b) => {
             const rA = a.r, cA = a.c;
             const rB = b.r, cB = b.c;
@@ -1223,6 +1459,138 @@ function applyRenumbering() {
     updateCanvas();
 }
 
+function renderPistolSummaries(simulationData) {
+    const { pistolPowers, errorMessages } = simulationData;
+    const list = document.getElementById('routing-summary');
+    if (!list) return;
+    list.innerHTML = '';
+    
+    let count = 0;
+    let totalPower = 0;
+    let countContactors = 0;
+    let countInverters = 0;
+    let countPistols = 0;
+    let countBreakers = 0;
+
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type === 'pistol') {
+                const uid = `${field.id}-${key}`;
+                const power = pistolPowers[uid] || 0;
+                totalPower += power;
+                
+                const item = document.createElement('div');
+                item.className = 'routing-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>Пистолет ${comp.name}</strong>
+                        <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">
+                            Поле: ${appState.fields.indexOf(field)+1} | ${power > 0 ? `Активно` : 'Не подключен'}
+                        </div>
+                    </div>
+                    <span class="power">${power} кВт</span>
+                `;
+                list.appendChild(item);
+                count++;
+                countPistols++;
+            } else if (comp.type === 'inverter') {
+                countInverters++;
+            }
+        }
+        
+        for (let key in field.contactors) {
+            const ctc = field.contactors[key];
+            if (!ctc.type || ctc.type === 'standard') {
+                countContactors++;
+            } else if (ctc.type === 'horizontal' || ctc.type === 'vertical') {
+                countBreakers++;
+            }
+        }
+    });
+
+    const titleLabel = document.getElementById('power-section-title');
+    if (titleLabel) {
+        titleLabel.innerText = "Активная мощность";
+    }
+
+    const powerLabel = document.getElementById('stat-active-power');
+    if (powerLabel) {
+        if (errorMessages && errorMessages.length > 0) {
+            powerLabel.innerText = 'error';
+            powerLabel.style.color = '#ff4a6b';
+        } else {
+            powerLabel.innerText = `${totalPower} кВт`;
+            powerLabel.style.color = 'var(--primary)';
+        }
+    }
+
+    const countContactorsReal = countContactors * 2;
+    const countBreakersReal = countBreakers * 2;
+    const totalContactorsReal = countContactorsReal + countBreakersReal;
+    const countEl = document.getElementById('stat-components-count');
+    if (countEl) {
+        countEl.innerHTML = `
+            Всего контакторов: <strong>${totalContactorsReal} шт</strong> (коммут: ${countContactorsReal}, раздел: ${countBreakersReal})<br>
+            Инверторы: ${countInverters} шт | Пистолеты: ${countPistols} шт
+        `;
+    }
+
+    if (count === 0) {
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">Нет пистолетов на схеме. Разместите их на нижнем поле.</div>';
+    }
+}
+
+function updateActivePowerDesignMode() {
+    let totalInverterPower = 0;
+    let countContactors = 0;
+    let countInverters = 0;
+    let countPistols = 0;
+    let countBreakers = 0;
+    
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type === 'inverter') {
+                totalInverterPower += (comp.power || 60);
+                countInverters++;
+            } else if (comp.type === 'pistol') {
+                countPistols++;
+            }
+        }
+        for (let key in field.contactors) {
+            const ctc = field.contactors[key];
+            if (!ctc.type || ctc.type === 'standard') {
+                countContactors++;
+            } else if (ctc.type === 'horizontal' || ctc.type === 'vertical') {
+                countBreakers++;
+            }
+        }
+    });
+    
+    const titleLabel = document.getElementById('power-section-title');
+    if (titleLabel) {
+        titleLabel.innerText = "Максимальная мощность";
+    }
+    
+    const powerValEl = document.getElementById('stat-active-power');
+    if (powerValEl) {
+        powerValEl.innerText = `${totalInverterPower} кВт`;
+        powerValEl.style.color = 'var(--primary)';
+    }
+    
+    const countContactorsReal = countContactors * 2;
+    const countBreakersReal = countBreakers * 2;
+    const totalContactorsReal = countContactorsReal + countBreakersReal;
+    const compCountEl = document.getElementById('stat-components-count');
+    if (compCountEl) {
+        compCountEl.innerHTML = `
+            Всего контакторов: <strong>${totalContactorsReal} шт</strong> (коммут: ${countContactorsReal}, раздел: ${countBreakersReal})<br>
+            Инверторы: ${countInverters} шт | Пистолеты: ${countPistols} шт
+        `;
+    }
+}
+
 // Global Event Listeners & Shortcuts
 document.addEventListener('click', (e) => {
     const menu = document.getElementById('custom-context-menu');
@@ -1242,6 +1610,10 @@ window.addEventListener('keydown', (e) => {
         }
         if (renumberDlg && renumberDlg.style.display !== 'none') {
             closeRenumberDialog();
+            return;
+        }
+        if (isPasteMode) {
+            cancelPasteMode();
             return;
         }
         const menu = document.getElementById('custom-context-menu');
@@ -1271,6 +1643,20 @@ window.addEventListener('keydown', (e) => {
     } else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
         e.preventDefault();
         redo(appState, updateCanvas);
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
+        e.preventDefault();
+        copySelected();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+        e.preventDefault();
+        pasteClipboard();
+    } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
+        e.preventDefault();
+        appState.selectedKeys.clear();
+        appState.fields.forEach(f => {
+            for (let k in f.components) appState.selectedKeys.add(`${f.id}-comp-${k}`);
+            for (let k in f.contactors) appState.selectedKeys.add(`${f.id}-ctc-${k}`);
+        });
+        updateCanvas();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteSelected();
@@ -1280,8 +1666,8 @@ window.addEventListener('keydown', (e) => {
 window.updateCanvas = updateCanvas;
 window.setMode = function(isSim) {
     appState.isSimulationMode = isSim;
-    document.getElementById('btn-mode-design')?.classList.toggle('active', !isSim);
-    document.getElementById('btn-mode-sim')?.classList.toggle('active', isSim);
+    document.getElementById('mode-btn-design')?.classList.toggle('active', !isSim);
+    document.getElementById('mode-btn-sim')?.classList.toggle('active', isSim);
     
     const toolbar = document.getElementById('sidebar-toolbar');
     const outputs = document.getElementById('sidebar-pistol-outputs');
@@ -1337,6 +1723,11 @@ window.togglePowerFlow = function(checked) {
         updateCanvas();
     }
 };
+
+window.fillAllContactorsGlobal = fillAllContactorsGlobal;
+window.copySelected = copySelected;
+window.pasteClipboard = pasteClipboard;
+window.cancelPasteMode = cancelPasteMode;
 
 window.openPropertiesForSelected = openPropertiesForSelected;
 window.closeRenameDialog = closeRenameDialog;
