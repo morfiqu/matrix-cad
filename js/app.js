@@ -1667,6 +1667,10 @@ function updateActivePowerDesignMode() {
 }
 
 // Global Event Listeners & Shortcuts
+window.addEventListener('mousedown', (e) => {
+    console.log('[TESTPOINT GLOBAL mousedown] Target:', e.target, 'TagName:', e.target.tagName, 'Class:', e.target.getAttribute ? e.target.getAttribute('class') : '');
+});
+
 document.addEventListener('click', (e) => {
     const menu = document.getElementById('custom-context-menu');
     if (menu && !menu.contains(e.target)) {

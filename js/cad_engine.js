@@ -344,10 +344,12 @@ function drawGridCells(field, svg, state) {
             }
             
             rect.onmousedown = (e) => {
-                if (state.isSimulationMode) return;
                 const currentTool = state.activeTool || 'select';
+                console.log(`[TESTPOINT 1: rect.onmousedown] cell: (${r}, ${c}), tool: ${currentTool}, simMode: ${state.isSimulationMode}`);
+                if (state.isSimulationMode) return;
                 const isContactorCtrlDrag = (currentTool === 'contactor' && (e.ctrlKey || e.metaKey));
                 if (currentTool === 'select' || isContactorCtrlDrag) {
+                    console.log(`[TESTPOINT 1: Early return!] currentTool is '${currentTool}'`);
                     return;
                 }
                 if (onCellMouseDown) onCellMouseDown(e, field.id, r, c);
