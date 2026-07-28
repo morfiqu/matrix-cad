@@ -20,6 +20,12 @@ let activeFieldId = null;
 let clipboard = null;
 let isPasteMode = false;
 let pasteFieldId = null;
+let pasteAnchorRow = 0;
+let pasteAnchorCol = 0;
+
+let lastHoveredFieldId = null;
+let lastHoveredRow = null;
+let lastHoveredCol = null;
 
 window.addEventListener('mouseup', () => {
     isDrawingComponents = false;
@@ -139,7 +145,6 @@ function setTool(tool) {
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
-    console.log(`[CAD CellMouseDown] Tool: ${appState.activeTool}, cell: (${r}, ${c})`);
     if (isPasteMode || appState.isPasteMode) {
         e.stopPropagation();
         e.preventDefault();
@@ -163,6 +168,10 @@ function handleCellMouseDown(e, fieldId, r, c) {
 }
 
 function handleCellHover(e, fieldId, r, c) {
+    lastHoveredFieldId = fieldId;
+    lastHoveredRow = r;
+    lastHoveredCol = c;
+    
     if (isPasteMode || appState.isPasteMode) {
         pasteAnchorRow = r;
         pasteAnchorCol = c;
@@ -180,7 +189,6 @@ function handleCellHover(e, fieldId, r, c) {
 }
 
 function handleCellClick(fieldId, r, c) {
-    console.log(`[CAD CellClick] Tool: ${appState.activeTool}, cell: (${r}, ${c})`);
     if (appState.isSimulationMode) return;
     const field = appState.fields.find(f => f.id === fieldId);
     if (!field) return;
@@ -967,6 +975,19 @@ function pasteClipboard() {
     appState.isPasteMode = true;
     pasteFieldId = clipboard.fieldId;
     document.body.style.cursor = 'crosshair';
+    
+    // Trigger preview immediately on the currently hovered cell
+    if (typeof lastHoveredRow === 'number' && typeof lastHoveredCol === 'number') {
+        const targetFieldId = lastHoveredFieldId || clipboard.fieldId;
+        const field = appState.fields.find(f => f.id === targetFieldId);
+        const svg = document.getElementById(`cad-svg-${targetFieldId}`);
+        if (field && svg) {
+            pasteAnchorRow = lastHoveredRow;
+            pasteAnchorCol = lastHoveredCol;
+            pasteFieldId = targetFieldId;
+            updatePastePreview(field, svg, lastHoveredRow, lastHoveredCol);
+        }
+    }
 }
 
 function cancelPasteMode() {
@@ -1667,10 +1688,6 @@ function updateActivePowerDesignMode() {
 }
 
 // Global Event Listeners & Shortcuts
-window.addEventListener('mousedown', (e) => {
-    console.log('[TESTPOINT GLOBAL mousedown] Target:', e.target, 'TagName:', e.target.tagName, 'Class:', e.target.getAttribute ? e.target.getAttribute('class') : '');
-});
-
 document.addEventListener('click', (e) => {
     const menu = document.getElementById('custom-context-menu');
     if (menu && !menu.contains(e.target)) {
@@ -1726,10 +1743,6 @@ window.addEventListener('keydown', (e) => {
     const isC = (keyCode === 67 || code === 'KeyC' || keyLower === 'c' || keyLower === 'с' || keyLower === '\x03');
     const isV = (keyCode === 86 || code === 'KeyV' || keyLower === 'v' || keyLower === 'м' || keyLower === '\x16');
     const isA = (keyCode === 65 || code === 'KeyA' || keyLower === 'a' || keyLower === 'ф' || keyLower === '\x01');
-
-    if (isCtrl && isZ) {
-        console.log("[CAD Keydown] Ctrl+Z pressed!", { keyCode, keyLower, code, shift: e.shiftKey });
-    }
 
     if (isCtrl && !e.shiftKey && isZ) {
         e.preventDefault();
