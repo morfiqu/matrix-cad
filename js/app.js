@@ -249,11 +249,64 @@ function handleCellClick(fieldId, r, c) {
             }
         }
 
+        let hasRowWire = false;
+        for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+            const comp = field.components[`${r}-${colCheck}`];
+            if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                hasRowWire = true; break;
+            }
+        }
+        let hasColWire = false;
+        for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+            const comp = field.components[`${rowCheck}-${c}`];
+            if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                hasColWire = true; break;
+            }
+        }
+
+        if (pos === 'middle') {
+            if (hasRowWire && hasColWire) {
+                alert("Здесь пересечение шин! Клемма в середине поля ставится только на горизонтальную или вертикальную линию отдельно.");
+                return;
+            }
+            if (!hasRowWire && !hasColWire) {
+                alert("Нельзя ставить клемму в середине поля, если здесь нет проходящей линии!");
+                return;
+            }
+        }
+        if (pos === 'right' && !hasRowWire) {
+            alert("Нельзя ставить клемму справа, если на этой строке нет линии!");
+            return;
+        }
+
         const defaultNum = getLowestAvailableIndexGlobal('cable');
         field.components[key] = { type: 'cable', name: `C${defaultNum}`, pos: pos };
     } else if (appState.activeTool === 'contactor') {
         if (r > 0 && r < field.rows - 1 && c > 0 && c < field.cols - 1) {
-            field.contactors[key] = { type: 'standard', closed: false };
+            let hasRowWire = false;
+            for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                const comp = field.components[`${r}-${colCheck}`];
+                if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                    hasRowWire = true; break;
+                }
+            }
+            let hasColWire = false;
+            for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                const comp = field.components[`${rowCheck}-${c}`];
+                if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle' && comp.pos !== 'right'))) {
+                    hasColWire = true; break;
+                }
+            }
+
+            if (hasRowWire && hasColWire) {
+                field.contactors[key] = { type: 'standard', closed: false };
+            } else {
+                alert("Контактор можно ставить только на пересечении горизонтальной (инверторной) и вертикальной (пистолетной) линий!");
+                return;
+            }
+        } else {
+            alert("Контактор можно размещать только во внутренней сетке!");
+            return;
         }
     } else if (appState.activeTool === 'breaker') {
         if (r > 0 && r < field.rows - 1 && c > 0 && c < field.cols - 1) {
