@@ -33,6 +33,7 @@ function createInitialState() {
 }
 
 function saveHistoryState(state) {
+    if (state.isSimulationMode) return;
     const stateStr = JSON.stringify(state.fields);
     if (state.historyStack.length > 0 && state.historyStack[state.historyStack.length - 1] === stateStr) {
         return;
@@ -42,11 +43,16 @@ function saveHistoryState(state) {
         state.historyStack.shift();
     }
     state.redoStack = [];
+    console.log(`[CAD History] Saved state #${state.historyStack.length}`);
 }
 
 function undo(state, updateCanvasCallback) {
+    console.log(`[CAD Undo] Triggered! SimMode: ${state.isSimulationMode}, History length: ${state.historyStack.length}`);
     if (state.isSimulationMode) return;
-    if (state.historyStack.length <= 1) return;
+    if (state.historyStack.length <= 1) {
+        console.warn("[CAD Undo] Cannot undo: history stack length <= 1");
+        return;
+    }
     
     const currentState = state.historyStack.pop();
     state.redoStack.push(currentState);
@@ -56,6 +62,7 @@ function undo(state, updateCanvasCallback) {
     
     state.selectedKeys.clear();
     updateCanvasCallback();
+    console.log(`[CAD Undo] Successfully reverted to state #${state.historyStack.length}`);
 }
 
 function redo(state, updateCanvasCallback) {

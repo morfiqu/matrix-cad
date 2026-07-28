@@ -1716,6 +1716,10 @@ window.addEventListener('keydown', (e) => {
     const isV = (keyCode === 86 || code === 'KeyV' || keyLower === 'v' || keyLower === 'м' || keyLower === '\x16');
     const isA = (keyCode === 65 || code === 'KeyA' || keyLower === 'a' || keyLower === 'ф' || keyLower === '\x01');
 
+    if (isCtrl && isZ) {
+        console.log("[CAD Keydown] Ctrl+Z pressed!", { keyCode, keyLower, code, shift: e.shiftKey });
+    }
+
     if (isCtrl && !e.shiftKey && isZ) {
         e.preventDefault();
         undo(appState, updateCanvas);
