@@ -344,9 +344,10 @@ function drawGridCells(field, svg, state) {
             }
             
             rect.onmousedown = (e) => {
-                if (isSimulationMode) return;
-                const isContactorCtrlDrag = (activeTool === 'contactor' && (e.ctrlKey || e.metaKey));
-                if (activeTool === 'select' || isContactorCtrlDrag) {
+                if (state.isSimulationMode) return;
+                const currentTool = state.activeTool || 'select';
+                const isContactorCtrlDrag = (currentTool === 'contactor' && (e.ctrlKey || e.metaKey));
+                if (currentTool === 'select' || isContactorCtrlDrag) {
                     return;
                 }
                 if (onCellMouseDown) onCellMouseDown(e, field.id, r, c);
