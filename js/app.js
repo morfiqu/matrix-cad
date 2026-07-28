@@ -131,8 +131,9 @@ function setTool(tool) {
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
-    if (isPasteMode) {
+    if (isPasteMode || appState.isPasteMode) {
         e.stopPropagation();
+        e.preventDefault();
         const field = appState.fields.find(f => f.id === fieldId);
         if (field) commitPaste(field, r, c);
         return;
@@ -141,6 +142,8 @@ function handleCellMouseDown(e, fieldId, r, c) {
     if (appState.activeTool === 'select' || isContactorCtrlDrag) {
         return;
     }
+    e.stopPropagation();
+    e.preventDefault();
     if (e.shiftKey) {
         isDrawingComponents = true;
         activeFieldId = fieldId;
@@ -946,13 +949,15 @@ function copySelected() {
 function pasteClipboard() {
     if (appState.isSimulationMode || !clipboard) return;
     isPasteMode = true;
+    appState.isPasteMode = true;
     pasteFieldId = clipboard.fieldId;
     document.body.style.cursor = 'crosshair';
 }
 
 function cancelPasteMode() {
-    if (!isPasteMode) return;
+    if (!isPasteMode && !appState.isPasteMode) return;
     isPasteMode = false;
+    appState.isPasteMode = false;
     document.body.style.cursor = '';
     appState.fields.forEach(f => {
         const svg = document.getElementById(`cad-svg-${f.id}`);

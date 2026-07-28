@@ -399,6 +399,11 @@ function drawRulers(field, svg, state) {
             if (isColEmpty) {
                 const btn = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 btn.setAttribute("class", "hover-minus-btn");
+                btn.onmousedown = (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (onDeleteCol) onDeleteCol(field, c);
+                };
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     if (onDeleteCol) onDeleteCol(field, c);
@@ -432,6 +437,11 @@ function drawRulers(field, svg, state) {
             
             const plusGrp = document.createElementNS("http://www.w3.org/2000/svg", "g");
             plusGrp.setAttribute("class", "ruler-plus-group");
+            plusGrp.onmousedown = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (onInsertCol) onInsertCol(field, c);
+            };
             plusGrp.onclick = (e) => {
                 e.stopPropagation();
                 if (onInsertCol) onInsertCol(field, c);
@@ -509,6 +519,11 @@ function drawRulers(field, svg, state) {
             if (isRowEmpty) {
                 const btn = document.createElementNS("http://www.w3.org/2000/svg", "g");
                 btn.setAttribute("class", "hover-minus-btn");
+                btn.onmousedown = (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (onDeleteRow) onDeleteRow(field, r);
+                };
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     if (onDeleteRow) onDeleteRow(field, r);
@@ -542,6 +557,11 @@ function drawRulers(field, svg, state) {
             
             const plusGrp = document.createElementNS("http://www.w3.org/2000/svg", "g");
             plusGrp.setAttribute("class", "ruler-plus-group");
+            plusGrp.onmousedown = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (onInsertRow) onInsertRow(field, r);
+            };
             plusGrp.onclick = (e) => {
                 e.stopPropagation();
                 if (onInsertRow) onInsertRow(field, r);
@@ -613,6 +633,11 @@ function createSvgRulerButton(parent, x, y, w, h, symbol, action) {
     rect.setAttribute("height", h);
     rect.setAttribute("rx", 4);
     rect.setAttribute("class", "svg-ruler-btn");
+    rect.onmousedown = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        action();
+    };
     rect.onclick = (e) => {
         e.stopPropagation();
         action();
@@ -624,6 +649,7 @@ function createSvgRulerButton(parent, x, y, w, h, symbol, action) {
     text.setAttribute("y", y + h/2 + 4.5);
     text.setAttribute("text-anchor", "middle");
     text.setAttribute("class", "svg-ruler-btn-text");
+    text.setAttribute("pointer-events", "none");
     text.textContent = symbol;
     parent.appendChild(text);
 }
@@ -637,6 +663,11 @@ function createSvgValueBox(parent, x, y, w, h, val, rectId, action) {
     rect.setAttribute("rx", 4);
     rect.setAttribute("id", rectId);
     rect.setAttribute("class", "svg-ruler-val-rect");
+    rect.onmousedown = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        action();
+    };
     rect.onclick = (e) => {
         e.stopPropagation();
         action();
@@ -648,6 +679,7 @@ function createSvgValueBox(parent, x, y, w, h, val, rectId, action) {
     text.setAttribute("y", y + h/2 + 4);
     text.setAttribute("text-anchor", "middle");
     text.setAttribute("class", "svg-ruler-val-text");
+    text.setAttribute("pointer-events", "none");
     text.textContent = val;
     parent.appendChild(text);
 }
