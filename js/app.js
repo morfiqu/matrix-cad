@@ -86,6 +86,19 @@ function updateCanvas() {
     updateSidebarStats(simulationData);
 }
 
+function setTool(tool) {
+    if (appState.isSimulationMode) return;
+    const isAlreadyActive = (appState.activeTool === tool);
+    const nextTool = isAlreadyActive ? 'select' : tool;
+    
+    appState.activeTool = nextTool;
+    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+    
+    if (nextTool !== 'select') {
+        document.getElementById(`tool-${nextTool}`)?.classList.add('active');
+    }
+}
+
 function handleCellClick(fieldId, r, c) {
     if (appState.isSimulationMode) return;
     const field = appState.fields.find(f => f.id === fieldId);
@@ -611,7 +624,7 @@ function insertRowAtIndex(field, r) {
         const row = parseInt(parts[0]);
         const col = parseInt(parts[1]);
         if (row <= r) {
-            newContactors[key] = field.contactors[key];
+            newContactors[key] = field.components[key];
         } else {
             newContactors[`${row + 1}-${col}`] = field.contactors[key];
         }
@@ -1195,15 +1208,44 @@ document.addEventListener('click', (e) => {
     }
 });
 
-document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const renameDlg = document.getElementById('rename-dialog');
+        const renumberDlg = document.getElementById('renumber-dialog');
+        
+        if (renameDlg && renameDlg.style.display !== 'none') {
+            closeRenameDialog();
+            return;
+        }
+        if (renumberDlg && renumberDlg.style.display !== 'none') {
+            closeRenumberDialog();
+            return;
+        }
+        const menu = document.getElementById('custom-context-menu');
+        if (menu && menu.style.display === 'block') {
+            menu.style.display = 'none';
+            return;
+        }
+        if (appState.activeTool !== 'select') {
+            setTool('select');
+            return;
+        }
+        if (appState.selectedKeys.size > 0) {
+            appState.selectedKeys.clear();
+            updateCanvas();
+            return;
+        }
+        return;
+    }
+
+    if (document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
         return;
     }
     
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         undo(appState, updateCanvas);
-    } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+    } else if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
         e.preventDefault();
         redo(appState, updateCanvas);
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1235,12 +1277,7 @@ window.setMenuPos = function(pos) {
     }
 };
 
-window.setTool = function(tool) {
-    if (appState.isSimulationMode) return;
-    appState.activeTool = tool;
-    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`tool-${tool}`)?.classList.add('active');
-};
+window.setTool = setTool;
 
 window.addNewField = function() {
     if (appState.isSimulationMode) return;
