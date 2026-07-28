@@ -761,12 +761,14 @@ function drawWiring(field, svg, activePaths, state) {
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
+                const isAnim = state && state.isSimulationMode && state.showPowerFlow;
+
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 lineP.setAttribute("x1", x1);
                 lineP.setAttribute("y1", yPos);
                 lineP.setAttribute("x2", x2);
                 lineP.setAttribute("y2", yPos);
-                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''} ${isActiveP && isAnim ? 'animating' : ''}`);
                 lineP.setAttribute("id", wirePId);
                 if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
                 svg.appendChild(lineP);
@@ -776,7 +778,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineN.setAttribute("y1", yNeg);
                 lineN.setAttribute("x2", x2);
                 lineN.setAttribute("y2", yNeg);
-                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''}`);
+                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
                 lineN.setAttribute("id", wireNId);
                 if (isActiveN) lineN.setAttribute("stroke", "#ffffff");
                 svg.appendChild(lineN);
@@ -786,7 +788,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineNInner.setAttribute("y1", yNeg);
                 lineNInner.setAttribute("x2", x2);
                 lineNInner.setAttribute("y2", yNeg);
-                lineNInner.setAttribute("class", "wire-n-inner");
+                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
                 svg.appendChild(lineNInner);
             }
         }
@@ -815,13 +817,14 @@ function drawWiring(field, svg, activePaths, state) {
                 const wireNId = `${field.id}-wire-col-n-seg-${c}-${r}`;
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
+                const isAnim = state && state.isSimulationMode && state.showPowerFlow;
 
                 const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 lineP.setAttribute("x1", xPos);
                 lineP.setAttribute("y1", y1);
                 lineP.setAttribute("x2", xPos);
                 lineP.setAttribute("y2", y2);
-                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''} ${isActiveP && isAnim ? 'animating' : ''}`);
                 lineP.setAttribute("id", wirePId);
                 if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
                 svg.appendChild(lineP);
@@ -831,7 +834,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineN.setAttribute("y1", y1);
                 lineN.setAttribute("x2", xNeg);
                 lineN.setAttribute("y2", y2);
-                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''}`);
+                lineN.setAttribute("class", `wire-n ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
                 lineN.setAttribute("id", wireNId);
                 if (isActiveN) lineN.setAttribute("stroke", "#ffffff");
                 svg.appendChild(lineN);
@@ -841,7 +844,7 @@ function drawWiring(field, svg, activePaths, state) {
                 lineNInner.setAttribute("y1", y1);
                 lineNInner.setAttribute("x2", xNeg);
                 lineNInner.setAttribute("y2", y2);
-                lineNInner.setAttribute("class", "wire-n-inner");
+                lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''} ${isActiveN && isAnim ? 'animating' : ''}`);
                 svg.appendChild(lineNInner);
             }
         }
