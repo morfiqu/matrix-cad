@@ -37,6 +37,10 @@ function bindSVGDragSelection(field, svg, state) {
     let dragStart = null;
     let selectionBox = null;
     
+    if (svg._dragSelectionHandler) {
+        svg.removeEventListener('mousedown', svg._dragSelectionHandler);
+    }
+    
     const handleMouseDown = (e) => {
         if (isSimulationMode) return;
         
@@ -48,8 +52,6 @@ function bindSVGDragSelection(field, svg, state) {
         const isTargetValid = validTargets.some(cls => targetClass.includes(cls)) || e.target.tagName === 'svg' || e.target.tagName === 'SVG';
         
         if (!isTargetValid) return;
-        
-        e.preventDefault();
         
         const rect = svg.getBoundingClientRect();
         const startX = e.clientX - rect.left;
@@ -295,6 +297,7 @@ function bindSVGDragSelection(field, svg, state) {
         document.addEventListener('mouseup', onMouseUp);
     };
     
+    svg._dragSelectionHandler = handleMouseDown;
     svg.addEventListener('mousedown', handleMouseDown);
 }
 
