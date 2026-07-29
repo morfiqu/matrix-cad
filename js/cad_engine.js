@@ -787,8 +787,8 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
-                if (isActiveP && isAnim) {
-                    const dir = simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                if (dir) {
                     const xMid = (x1 + x2) / 2;
                     let drawX1_1 = x1, drawX2_1 = xMid;
                     let drawX1_2 = xMid, drawX2_2 = x2;
@@ -876,8 +876,8 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
                 const isActiveP = activePaths && activePaths.has(wirePId);
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
-                if (isActiveP && isAnim) {
-                    const dir = simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
+                if (dir) {
                     const yMid = (y1 + y2) / 2;
                     let drawY1_1 = y1, drawY2_1 = yMid;
                     let drawY1_2 = yMid, drawY2_2 = y2;
