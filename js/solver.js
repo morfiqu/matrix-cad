@@ -71,8 +71,16 @@ function calculateSimulation(fields) {
                     }
                 }
                 if (hasRowWire) {
-                    if (startC > 0) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC - 1, prevC: startC, path: [], transitionCtcs: [] });
-                    if (startC < field.cols - 1) globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC + 1, prevC: startC, path: [], transitionCtcs: [] });
+                    if (startC > 0) {
+                        const minC = startC - 1;
+                        const segId = `${field.id}-wire-row-p-seg-${startR}-${minC}`;
+                        globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC - 1, prevC: startC, path: [], transitionCtcs: [], segments: [{ id: segId, dir: 'left' }] });
+                    }
+                    if (startC < field.cols - 1) {
+                        const minC = startC;
+                        const segId = `${field.id}-wire-row-p-seg-${startR}-${minC}`;
+                        globalQueue.push({ fieldId: field.id, type: 'row', r: startR, c: startC + 1, prevC: startC, path: [], transitionCtcs: [], segments: [{ id: segId, dir: 'right' }] });
+                    }
                 }
                 
                 while (globalQueue.length > 0) {
@@ -88,22 +96,17 @@ function calculateSimulation(fields) {
                         const minC = Math.min(current.prevC, current.c);
                         activePaths.add(`${current.fieldId}-wire-row-p-seg-${current.r}-${minC}`);
                         activePaths.add(`${current.fieldId}-wire-row-n-seg-${current.r}-${minC}`);
-                        const direction = current.c > current.prevC ? 'right' : 'left';
-                        flowDirections[`${current.fieldId}-wire-row-p-seg-${current.r}-${minC}`] = direction;
-                        flowDirections[`${current.fieldId}-wire-row-n-seg-${current.r}-${minC}`] = direction;
                     } else if (current.type === 'col' && current.prevR !== undefined) {
                         const minR = Math.min(current.prevR, current.r);
                         activePaths.add(`${current.fieldId}-wire-col-p-seg-${current.c}-${minR}`);
                         activePaths.add(`${current.fieldId}-wire-col-n-seg-${current.c}-${minR}`);
-                        const direction = current.r > current.prevR ? 'down' : 'up';
-                        flowDirections[`${current.fieldId}-wire-col-p-seg-${current.c}-${minR}`] = direction;
-                        flowDirections[`${current.fieldId}-wire-col-n-seg-${current.c}-${minR}`] = direction;
                     }
                     
                     const cKey = `${current.r}-${current.c}`;
                     const ctc = f.contactors[cKey];
                     const cellComp = f.components[cKey];
                     let currentPath = current.path ? [...current.path] : [];
+                    let currentSegments = current.segments || [];
                     
                     if (ctc && ctc.closed && (ctc.type === 'horizontal' || ctc.type === 'vertical')) {
                         const ctcGlobalKey = `${current.fieldId}-ctc-${cKey}`;
@@ -121,7 +124,8 @@ function calculateSimulation(fields) {
                             invReachesPistol.add(`${field.id}-${key}`);
                             pathContactorsForInv.push({
                                 breakers: currentPath,
-                                transitions: current.transitionCtcs || []
+                                transitions: current.transitionCtcs || [],
+                                segments: currentSegments
                             });
                         } else if (cellComp.type === 'cable') {
                             activePaths.add(`${current.fieldId}-cable-out-${cKey}`);
@@ -163,12 +167,28 @@ function calculateSimulation(fields) {
                                         }
                                         
                                         if (oHasRow && oR > 0 && oR < otherField.rows - 1) {
-                                            if (oC > 0) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
-                                            if (oC < otherField.cols - 1) globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                            if (oC > 0) {
+                                                const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC - 1}`;
+                                                const nextSegs = [...currentSegments, { id: segId, dir: 'left' }];
+                                                globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
+                                            }
+                                            if (oC < otherField.cols - 1) {
+                                                const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC}`;
+                                                const nextSegs = [...currentSegments, { id: segId, dir: 'right' }];
+                                                globalQueue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, prevC: oC, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
+                                            }
                                         }
                                         if (oHasCol && oC > 0 && oC < otherField.cols - 1) {
-                                            if (oR > 0) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
-                                            if (oR < otherField.rows - 1) globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                            if (oR > 0) {
+                                                const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR - 1}`;
+                                                const nextSegs = [...currentSegments, { id: segId, dir: 'up' }];
+                                                globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
+                                            }
+                                            if (oR < otherField.rows - 1) {
+                                                const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR}`;
+                                                const nextSegs = [...currentSegments, { id: segId, dir: 'down' }];
+                                                globalQueue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, prevR: oR, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
+                                            }
                                         }
                                     }
                                 }
@@ -183,7 +203,7 @@ function calculateSimulation(fields) {
                             if (!nextTransitionCtcs.includes(ctcGlobalKey)) {
                                 nextTransitionCtcs.push(ctcGlobalKey);
                             }
-                            globalQueue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: nextTransitionCtcs });
+                            globalQueue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: nextTransitionCtcs, segments: currentSegments });
                         }
                         
                         if (current.r > 0 && current.r < f.rows - 1) {
@@ -191,14 +211,18 @@ function calculateSimulation(fields) {
                                 const nextC = current.c - 1;
                                 const isBlocked = (ctc && ctc.type === 'horizontal' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                    const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${nextC}`;
+                                    const nextSegs = [...currentSegments, { id: segId, dir: 'left' }];
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
                                 }
                             }
                             if (current.c < f.cols - 1) {
                                 const nextC = current.c + 1;
                                 const isBlocked = (ctc && ctc.type === 'horizontal' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                    const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${current.c}`;
+                                    const nextSegs = [...currentSegments, { id: segId, dir: 'right' }];
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, prevC: current.c, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
                                 }
                             }
                         }
@@ -209,7 +233,7 @@ function calculateSimulation(fields) {
                             if (!nextTransitionCtcs.includes(ctcGlobalKey)) {
                                 nextTransitionCtcs.push(ctcGlobalKey);
                             }
-                            globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, prevC: current.c, path: currentPath, transitionCtcs: nextTransitionCtcs });
+                            globalQueue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, prevC: current.c, path: currentPath, transitionCtcs: nextTransitionCtcs, segments: currentSegments });
                         }
                         
                         if (current.c > 0 && current.c < f.cols - 1) {
@@ -217,14 +241,18 @@ function calculateSimulation(fields) {
                                 const nextR = current.r - 1;
                                 const isBlocked = (ctc && ctc.type === 'vertical' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                    const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${nextR}`;
+                                    const nextSegs = [...currentSegments, { id: segId, dir: 'up' }];
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
                                 }
                             }
                             if (current.r < f.rows - 1) {
                                 const nextR = current.r + 1;
                                 const isBlocked = (ctc && ctc.type === 'vertical' && !ctc.closed);
                                 if (!isBlocked) {
-                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [] });
+                                    const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${current.r}`;
+                                    const nextSegs = [...currentSegments, { id: segId, dir: 'down' }];
+                                    globalQueue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, prevR: current.r, path: currentPath, transitionCtcs: current.transitionCtcs || [], segments: nextSegs });
                                 }
                             }
                         }
@@ -239,6 +267,11 @@ function calculateSimulation(fields) {
                         pathData.transitions.forEach(ctcKey => {
                             contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
                         });
+                        if (pathData.segments) {
+                            pathData.segments.forEach(seg => {
+                                flowDirections[seg.id] = seg.dir;
+                            });
+                        }
                     });
                 }
 
