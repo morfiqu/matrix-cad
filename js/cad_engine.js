@@ -789,36 +789,21 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
 
                 const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
                 if (dir) {
-                    const xMid = (x1 + x2) / 2;
-                    let drawX1_1 = x1, drawX2_1 = xMid;
-                    let drawX1_2 = xMid, drawX2_2 = x2;
+                    let drawX1 = x1, drawX2 = x2;
                     if (dir === 'left') {
-                        drawX1_1 = x2;
-                        drawX2_1 = xMid;
-                        drawX1_2 = xMid;
-                        drawX2_2 = x1;
+                        drawX1 = x2;
+                        drawX2 = x1;
                     }
 
-                    // First half (with arrow at boundary center)
-                    const lineP1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP1.setAttribute("x1", drawX1_1);
-                    lineP1.setAttribute("y1", yPos);
-                    lineP1.setAttribute("x2", drawX2_1);
-                    lineP1.setAttribute("y2", yPos);
-                    lineP1.setAttribute("class", "wire-p active");
-                    lineP1.setAttribute("stroke", "#ff7788");
-                    lineP1.setAttribute("marker-end", "url(#arrow)");
-                    svg.appendChild(lineP1);
-
-                    // Second half
-                    const lineP2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP2.setAttribute("x1", drawX1_2);
-                    lineP2.setAttribute("y1", yPos);
-                    lineP2.setAttribute("x2", drawX2_2);
-                    lineP2.setAttribute("y2", yPos);
-                    lineP2.setAttribute("class", "wire-p active");
-                    lineP2.setAttribute("stroke", "#ff7788");
-                    svg.appendChild(lineP2);
+                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    lineP.setAttribute("x1", drawX1);
+                    lineP.setAttribute("y1", yPos);
+                    lineP.setAttribute("x2", drawX2);
+                    lineP.setAttribute("y2", yPos);
+                    lineP.setAttribute("class", "wire-p active");
+                    lineP.setAttribute("stroke", "#ff7788");
+                    lineP.setAttribute("marker-end", "url(#arrow)");
+                    svg.appendChild(lineP);
                 } else {
                     const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     lineP.setAttribute("x1", x1);
@@ -878,36 +863,21 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
 
                 const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
                 if (dir) {
-                    const yMid = (y1 + y2) / 2;
-                    let drawY1_1 = y1, drawY2_1 = yMid;
-                    let drawY1_2 = yMid, drawY2_2 = y2;
+                    let drawY1 = y1, drawY2 = y2;
                     if (dir === 'up') {
-                        drawY1_1 = y2;
-                        drawY2_1 = yMid;
-                        drawY1_2 = yMid;
-                        drawY2_2 = y1;
+                        drawY1 = y2;
+                        drawY2 = y1;
                     }
 
-                    // First half (with arrow at boundary center)
-                    const lineP1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP1.setAttribute("x1", xPos);
-                    lineP1.setAttribute("y1", drawY1_1);
-                    lineP1.setAttribute("x2", xPos);
-                    lineP1.setAttribute("y2", drawY2_1);
-                    lineP1.setAttribute("class", "wire-p active");
-                    lineP1.setAttribute("stroke", "#ff7788");
-                    lineP1.setAttribute("marker-end", "url(#arrow)");
-                    svg.appendChild(lineP1);
-
-                    // Second half
-                    const lineP2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP2.setAttribute("x1", xPos);
-                    lineP2.setAttribute("y1", drawY1_2);
-                    lineP2.setAttribute("x2", xPos);
-                    lineP2.setAttribute("y2", drawY2_2);
-                    lineP2.setAttribute("class", "wire-p active");
-                    lineP2.setAttribute("stroke", "#ff7788");
-                    svg.appendChild(lineP2);
+                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    lineP.setAttribute("x1", xPos);
+                    lineP.setAttribute("y1", drawY1);
+                    lineP.setAttribute("x2", xPos);
+                    lineP.setAttribute("y2", drawY2);
+                    lineP.setAttribute("class", "wire-p active");
+                    lineP.setAttribute("stroke", "#ff7788");
+                    lineP.setAttribute("marker-end", "url(#arrow)");
+                    svg.appendChild(lineP);
                 } else {
                     const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     lineP.setAttribute("x1", xPos);
