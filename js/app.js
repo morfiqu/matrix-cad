@@ -1899,12 +1899,9 @@ function renderInverterSimulationTable(simulationData) {
             </table>
         `;
         
-        // Insert before pistol demand wrap or before routing summary
-        const pistolWrap = document.getElementById('pistol-demand-wrap');
+        // Insert before routing summary or at the end
         const routingSummary = document.getElementById('routing-summary');
-        if (pistolWrap) {
-            outputsPanel.insertBefore(wrap, pistolWrap);
-        } else if (routingSummary) {
+        if (routingSummary) {
             outputsPanel.insertBefore(wrap, routingSummary);
         } else {
             outputsPanel.appendChild(wrap);
@@ -2012,8 +2009,15 @@ function applyAutoConnections() {
     // 3. Run pathfinding for each auto-connected pistol sequentially
     const claimedInverters = new Set();
     
-    // Deterministic sheet-based sort
-    autoPistols.sort((a, b) => a.uid.localeCompare(b.uid));
+    // Sort pistols based on their order in autoConnectOrder (FIFO priority for path stability)
+    autoPistols.sort((a, b) => {
+        const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
+        const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
+        if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
 
     // Calculate minInvPower
     let minInvPower = 60;
@@ -2096,13 +2100,44 @@ function renderPistolDemandTable(simulationData) {
                 <tbody id="pistol-demand-tbody"></tbody>
             </table>
         `;
+        const invWrap = document.getElementById('inverter-simulation-wrap');
         const routingSummary = document.getElementById('routing-summary');
-        if (routingSummary) {
+        if (invWrap) {
+            outputsPanel.insertBefore(wrap, invWrap);
+        } else if (routingSummary) {
             outputsPanel.insertBefore(wrap, routingSummary);
         } else {
             outputsPanel.appendChild(wrap);
         }
     }
+
+    // Initialize autoConnectOrder if missing
+    if (!appState.autoConnectOrder) {
+        appState.autoConnectOrder = [];
+    }
+    // Self-heal: ensure all currently auto-connected pistols are in the list
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            if (field.components[key].type === 'pistol') {
+                const uid = `${field.id}-${key}`;
+                if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                    if (!appState.autoConnectOrder.includes(uid)) {
+                        appState.autoConnectOrder.push(uid);
+                    }
+                }
+            }
+        }
+    });
+    // Remove any UIDs from autoConnectOrder that are no longer checked/present
+    appState.autoConnectOrder = appState.autoConnectOrder.filter(uid => {
+        const parts = uid.split('-');
+        const fId = parseInt(parts[0]);
+        const r = parts[1];
+        const c = parts[2];
+        const f = appState.fields.find(x => x.id === fId);
+        if (!f || !f.components[`${r}-${c}`]) return false;
+        return appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect;
+    });
 
     const tbody = document.getElementById('pistol-demand-tbody');
     if (!tbody) return;
@@ -2261,6 +2296,16 @@ function renderPistolDemandTable(simulationData) {
             
             autoCheckbox.addEventListener('change', function() {
                 appState.pistolDemands[uid].autoConnect = this.checked;
+                if (!appState.autoConnectOrder) {
+                    appState.autoConnectOrder = [];
+                }
+                if (this.checked) {
+                    if (!appState.autoConnectOrder.includes(uid)) {
+                        appState.autoConnectOrder.push(uid);
+                    }
+                } else {
+                    appState.autoConnectOrder = appState.autoConnectOrder.filter(x => x !== uid);
+                }
                 updateCanvas();
             });
 
@@ -2298,7 +2343,15 @@ function getClaimedInvertersForPistol(targetPistolUid) {
         }
     });
 
-    autoPistols.sort((a, b) => a.uid.localeCompare(b.uid));
+    // Sort pistols based on their order in autoConnectOrder (FIFO priority for path stability)
+    autoPistols.sort((a, b) => {
+        const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
+        const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
+        if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
 
     let minInvPower = 60;
     appState.fields.forEach(f => {

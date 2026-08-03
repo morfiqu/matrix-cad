@@ -58,6 +58,7 @@ function createInitialState() {
         pistolDemands: {},         // { "fieldId-r-c": number (kW) }
         inverterSettings: {},      // { "fieldId-r-c": { voltage, current } }
         autoClosedContactors: [],  // list of contactor keys closed by auto-connect
+        autoConnectOrder: [],      // list of pistol UIDs in order of auto-connect activation
         optimalPathHighlight: null, // { pistolUid, pathSegments: Set<string> } | null
         selectedKeys: new Set(),
         historyStack: [],
@@ -150,7 +151,8 @@ function doSaveToFile(fields) {
         fields: fields,
         inverterSettings: window.appState ? window.appState.inverterSettings : {},
         pistolDemands: window.appState ? window.appState.pistolDemands : {},
-        autoClosedContactors: window.appState ? window.appState.autoClosedContactors : []
+        autoClosedContactors: window.appState ? window.appState.autoClosedContactors : [],
+        autoConnectOrder: window.appState ? window.appState.autoConnectOrder : []
     };
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: "text/plain;charset=utf-8" });
@@ -179,6 +181,7 @@ function doLoadFromFile(event, state, updateCanvasCallback) {
                 state.inverterSettings = data.inverterSettings || {};
                 state.pistolDemands = data.pistolDemands || {};
                 state.autoClosedContactors = data.autoClosedContactors || [];
+                state.autoConnectOrder = data.autoConnectOrder || [];
                 state.activeTool = 'select';
                 if (state.selectedKeys) state.selectedKeys.clear();
                 state.historyStack = [];
