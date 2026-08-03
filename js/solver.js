@@ -4,6 +4,21 @@
  * parallel contactor branch power splitting, and pistol power accumulations.
  */
 
+/**
+ * Helper to get the actual inverter power dynamically based on user manual V/I inputs.
+ */
+function getInverterPower(comp, fieldId, key) {
+    const defaultMaxPower = comp.power !== undefined ? comp.power : 60;
+    const uid = `${fieldId}-${key}`;
+    if (window.appState && window.appState.inverterSettings && window.appState.inverterSettings[uid]) {
+        const s = window.appState.inverterSettings[uid];
+        const v = s.voltage !== undefined ? s.voltage : 500;
+        const i = s.current !== undefined ? s.current : (defaultMaxPower * 1000 / 500);
+        return (v * i) / 1000;
+    }
+    return defaultMaxPower;
+}
+
 function calculateSimulation(fields) {
     const activePaths = new Set();
     const contactorPowers = {};
@@ -57,7 +72,7 @@ function calculateSimulation(fields) {
         for (let key in field.components) {
             const comp = field.components[key];
             if (comp.type === 'inverter') {
-                const invPower = comp.power !== undefined ? comp.power : 60;
+                const invPower = getInverterPower(comp, field.id, key);
                 const reachedPistols = new Set();
                 const pathContactorsForInv = [];
                 
@@ -306,7 +321,7 @@ function calculateSimulation(fields) {
             if (comp.type === 'inverter') {
                 const invUid = `${f.id}-${key}`;
                 if (invReachesPistol.has(invUid)) {
-                    const invPower = comp.power !== undefined ? comp.power : 60;
+                    const invPower = getInverterPower(comp, f.id, key);
                     const r = parseInt(key.split('-')[0]);
                     for (let c = 0; c < f.cols; c++) {
                         const cc = f.components[`${r}-${c}`];
@@ -345,7 +360,7 @@ function calculateSimulation(fields) {
                     for (let cCheck = 0; cCheck < currField.cols; cCheck++) {
                         const ic = currField.components[`${currR}-${cCheck}`];
                         if (ic && ic.type === 'inverter') {
-                            invP = ic.power !== undefined ? ic.power : 60;
+                            invP = getInverterPower(ic, currField.id, `${currR}-${cCheck}`);
                             processedInvKeys.add(`${currField.id}-${currR}-${cCheck}`);
                             break;
                         }

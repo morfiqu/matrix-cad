@@ -56,6 +56,7 @@ function createInitialState() {
         showPowerFlow: true,
         showFlowArrows: true,
         pistolDemands: {},         // { "fieldId-r-c": number (kW) }
+        inverterSettings: {},      // { "fieldId-r-c": { voltage, current } }
         optimalPathHighlight: null, // { pistolUid, pathSegments: Set<string> } | null
         selectedKeys: new Set(),
         historyStack: [],

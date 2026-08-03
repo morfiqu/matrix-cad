@@ -1833,6 +1833,7 @@ function renderPistolSummaries(simulationData) {
         }
     });
 
+    renderInverterSimulationTable(simulationData);
     renderPistolDemandTable(simulationData);
 
     const titleLabel = document.getElementById('power-section-title');
@@ -1864,6 +1865,158 @@ function renderPistolSummaries(simulationData) {
 
     if (count === 0) {
         list.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">Нет пистолетов на схеме. Разместите их на нижнем поле.</div>';
+    }
+}
+
+/**
+ * Renders the inverter simulation table inside #inverter-simulation-wrap.
+ * Allows entering Voltage (0, 200..1000) and Current (capped dynamically based on max power).
+ */
+function renderInverterSimulationTable(simulationData) {
+    const outputsPanel = document.getElementById('sidebar-pistol-outputs');
+    if (!outputsPanel) return;
+
+    let wrap = document.getElementById('inverter-simulation-wrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'inverter-simulation-wrap';
+        wrap.innerHTML = `
+            <div class="section-title" style="margin-top: 15px; margin-bottom: 8px;">🔋 Параметры инверторов</div>
+            <table id="inverter-simulation-table" style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:15px;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); height:26px;">
+                        <th style="text-align:left; padding:4px;">Инвертор</th>
+                        <th style="text-align:center; padding:4px;">Макс, кВт</th>
+                        <th style="text-align:center; padding:4px;">U, В</th>
+                        <th style="text-align:center; padding:4px;">I, А</th>
+                        <th style="text-align:center; padding:4px;">Реал, кВт</th>
+                        <th style="text-align:center; padding:4px;">Вкл</th>
+                    </tr>
+                </thead>
+                <tbody id="inverter-simulation-tbody"></tbody>
+            </table>
+        `;
+        
+        // Insert before pistol demand wrap or before routing summary
+        const pistolWrap = document.getElementById('pistol-demand-wrap');
+        const routingSummary = document.getElementById('routing-summary');
+        if (pistolWrap) {
+            outputsPanel.insertBefore(wrap, pistolWrap);
+        } else if (routingSummary) {
+            outputsPanel.insertBefore(wrap, routingSummary);
+        } else {
+            outputsPanel.appendChild(wrap);
+        }
+    }
+
+    const tbody = document.getElementById('inverter-simulation-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    let hasInverters = false;
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type !== 'inverter') continue;
+            hasInverters = true;
+
+            const uid = `${field.id}-${key}`;
+            const maxPower = comp.power !== undefined ? comp.power : 60;
+            
+            // Ensure settings are initialized
+            if (!appState.inverterSettings[uid]) {
+                appState.inverterSettings[uid] = {
+                    voltage: 500,
+                    current: (maxPower * 1000) / 500
+                };
+            }
+            
+            const settings = appState.inverterSettings[uid];
+            const voltage = settings.voltage;
+            const current = settings.current;
+            
+            const isActive = simulationData.invReachesPistol && simulationData.invReachesPistol.has(uid);
+            const realPower = isActive ? ((voltage * current) / 1000) : 0;
+            const maxI = voltage > 0 ? (maxPower * 1000 / voltage) : 0;
+
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+            tr.style.height = '32px';
+            
+            tr.innerHTML = `
+                <td style="padding:4px; font-weight:bold; color:var(--text-main);">${comp.name}</td>
+                <td style="text-align:center; padding:4px; color:var(--text-muted);">${maxPower}</td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:50px;">
+                </td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:50px;" title="Макс. ток при U=${voltage}В: ${Math.round(maxI * 10) / 10}А">
+                </td>
+                <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${Math.round(realPower * 10) / 10}</td>
+                <td style="text-align:center; padding:4px; font-size:12px;">${isActive ? '🟢' : '⚪'}</td>
+            `;
+            tbody.appendChild(tr);
+
+            // Event bindings
+            const uInput = tr.querySelector('.u-input');
+            const iInput = tr.querySelector('.i-input');
+
+            const handleUChange = () => {
+                let v = parseFloat(uInput.value) || 0;
+                
+                // Clamp voltage bounds: 0 or 200..1000
+                if (v !== 0) {
+                    if (v < 200) v = 200;
+                    if (v > 1000) v = 1000;
+                }
+                
+                uInput.value = v;
+                appState.inverterSettings[uid].voltage = v;
+                
+                // Recalculate max allowed current for this voltage
+                const newMaxI = v > 0 ? (maxPower * 1000 / v) : 0;
+                let curI = parseFloat(iInput.value) || 0;
+                if (curI > newMaxI) {
+                    curI = newMaxI;
+                    iInput.value = Math.round(curI * 10) / 10;
+                    appState.inverterSettings[uid].current = curI;
+                }
+                
+                iInput.title = `Макс. ток при U=${v}В: ${Math.round(newMaxI * 10) / 10}А`;
+                
+                // Run simulation recalculation and redraw
+                updateCanvas();
+            };
+
+            const handleIChange = () => {
+                let v = appState.inverterSettings[uid].voltage;
+                let curI = parseFloat(iInput.value) || 0;
+                if (curI < 0) curI = 0;
+                
+                const newMaxI = v > 0 ? (maxPower * 1000 / v) : 0;
+                if (curI > newMaxI) {
+                    curI = newMaxI;
+                }
+                
+                iInput.value = Math.round(curI * 10) / 10;
+                appState.inverterSettings[uid].current = curI;
+                
+                // Run simulation recalculation and redraw
+                updateCanvas();
+            };
+
+            uInput.addEventListener('change', handleUChange);
+            uInput.addEventListener('blur', handleUChange);
+            
+            iInput.addEventListener('change', handleIChange);
+            iInput.addEventListener('blur', handleIChange);
+        }
+    });
+
+    if (!hasInverters) {
+        wrap.style.display = 'none';
+    } else {
+        wrap.style.display = 'block';
     }
 }
 
