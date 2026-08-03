@@ -788,32 +788,34 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
                 const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
-                if (dir) {
-                    let drawX1 = x1, drawX2 = x2;
-                    if (dir === 'left') {
-                        drawX1 = x2;
-                        drawX2 = x1;
-                    }
 
-                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP.setAttribute("x1", drawX1);
-                    lineP.setAttribute("y1", yPos);
-                    lineP.setAttribute("x2", drawX2);
-                    lineP.setAttribute("y2", yPos);
-                    lineP.setAttribute("class", "wire-p active");
-                    lineP.setAttribute("stroke", "#ff7788");
-                    lineP.setAttribute("marker-end", "url(#arrow)");
-                    svg.appendChild(lineP);
-                } else {
-                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP.setAttribute("x1", x1);
-                    lineP.setAttribute("y1", yPos);
-                    lineP.setAttribute("x2", x2);
-                    lineP.setAttribute("y2", yPos);
-                    lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
-                    lineP.setAttribute("id", wirePId);
-                    if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
-                    svg.appendChild(lineP);
+                // Always draw full wire segment
+                const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                lineP.setAttribute("x1", x1);
+                lineP.setAttribute("y1", yPos);
+                lineP.setAttribute("x2", x2);
+                lineP.setAttribute("y2", yPos);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
+                lineP.setAttribute("id", wirePId);
+                if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
+                svg.appendChild(lineP);
+
+                // Draw centered arrow triangle at midpoint if flow direction is known
+                if (dir) {
+                    const xMid = (x1 + x2) / 2;
+                    const aw = 8;  // half-width of arrowhead
+                    const ah = 6;  // half-height of arrowhead
+                    let pts;
+                    if (dir === 'right') {
+                        pts = `${xMid + aw},${yPos} ${xMid - aw},${yPos - ah} ${xMid - aw},${yPos + ah}`;
+                    } else {
+                        pts = `${xMid - aw},${yPos} ${xMid + aw},${yPos - ah} ${xMid + aw},${yPos + ah}`;
+                    }
+                    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    arrow.setAttribute("points", pts);
+                    arrow.setAttribute("fill", "#00d2ff");
+                    arrow.setAttribute("class", "flow-arrow");
+                    svg.appendChild(arrow);
                 }
 
                 const lineN = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -862,32 +864,34 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
                 const isActiveN = activePaths && activePaths.has(wireNId);
 
                 const dir = isActiveP && isAnim && simulationData && simulationData.flowDirections && simulationData.flowDirections[wirePId];
-                if (dir) {
-                    let drawY1 = y1, drawY2 = y2;
-                    if (dir === 'up') {
-                        drawY1 = y2;
-                        drawY2 = y1;
-                    }
 
-                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP.setAttribute("x1", xPos);
-                    lineP.setAttribute("y1", drawY1);
-                    lineP.setAttribute("x2", xPos);
-                    lineP.setAttribute("y2", drawY2);
-                    lineP.setAttribute("class", "wire-p active");
-                    lineP.setAttribute("stroke", "#ff7788");
-                    lineP.setAttribute("marker-end", "url(#arrow)");
-                    svg.appendChild(lineP);
-                } else {
-                    const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    lineP.setAttribute("x1", xPos);
-                    lineP.setAttribute("y1", y1);
-                    lineP.setAttribute("x2", xPos);
-                    lineP.setAttribute("y2", y2);
-                    lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
-                    lineP.setAttribute("id", wirePId);
-                    if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
-                    svg.appendChild(lineP);
+                // Always draw full wire segment
+                const lineP = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                lineP.setAttribute("x1", xPos);
+                lineP.setAttribute("y1", y1);
+                lineP.setAttribute("x2", xPos);
+                lineP.setAttribute("y2", y2);
+                lineP.setAttribute("class", `wire-p ${isActiveP ? 'active' : ''}`);
+                lineP.setAttribute("id", wirePId);
+                if (isActiveP) lineP.setAttribute("stroke", "#ff7788");
+                svg.appendChild(lineP);
+
+                // Draw centered arrow triangle at midpoint if flow direction is known
+                if (dir) {
+                    const yMid = (y1 + y2) / 2;
+                    const aw = 8;  // half-width (perpendicular)
+                    const ah = 6;  // half-height (along wire)
+                    let pts;
+                    if (dir === 'down') {
+                        pts = `${xPos},${yMid + ah} ${xPos - aw},${yMid - ah} ${xPos + aw},${yMid - ah}`;
+                    } else {
+                        pts = `${xPos},${yMid - ah} ${xPos - aw},${yMid + ah} ${xPos + aw},${yMid + ah}`;
+                    }
+                    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    arrow.setAttribute("points", pts);
+                    arrow.setAttribute("fill", "#00d2ff");
+                    arrow.setAttribute("class", "flow-arrow");
+                    svg.appendChild(arrow);
                 }
 
                 const lineN = document.createElementNS("http://www.w3.org/2000/svg", "line");
