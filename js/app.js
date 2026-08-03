@@ -1239,6 +1239,7 @@ function getLowestAvailableIndexGlobal(type) {
 }
 
 function isNameDuplicateGlobal(newName, currentGlobalKey, type) {
+    if (type === 'cable') return false; // Allow duplicate terminal IDs
     for (let f of appState.fields) {
         for (let key in f.components) {
             const globalKey = `${f.id}-${key}`;
