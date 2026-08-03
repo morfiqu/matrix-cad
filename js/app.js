@@ -1849,7 +1849,7 @@ function renderPistolSummaries(simulationData) {
             powerLabel.innerText = 'error';
             powerLabel.style.color = '#ff4a6b';
         } else {
-            powerLabel.innerText = `${totalPower} кВт`;
+            powerLabel.innerText = `${Math.round(totalPower * 10) / 10} кВт`;
             powerLabel.style.color = 'var(--primary)';
         }
     }
@@ -2681,7 +2681,7 @@ function updateActivePowerDesignMode() {
     
     const powerValEl = document.getElementById('stat-active-power');
     if (powerValEl) {
-        powerValEl.innerText = `${totalInverterPower} кВт`;
+        powerValEl.innerText = `${Math.round(totalInverterPower * 10) / 10} кВт`;
         powerValEl.style.color = 'var(--primary)';
     }
     
