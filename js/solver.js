@@ -670,13 +670,18 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
         let currentTransitions = current.transitions ? [...current.transitions] : [];
         const ctcGlobalKey = `${current.fieldId}-ctc-${cKey}`;
 
-        if (ctc && (ctc.type === 'horizontal' || ctc.type === 'vertical')) {
-            if (!currentBreakers.includes(ctcGlobalKey)) {
-                currentBreakers.push(ctcGlobalKey);
+        // Record breakers only if we traverse them on their respective line type
+        if (current.type === 'row') {
+            if (ctc && ctc.type === 'horizontal') {
+                if (!currentBreakers.includes(ctcGlobalKey)) {
+                    currentBreakers.push(ctcGlobalKey);
+                }
             }
-        } else if (ctc && (!ctc.type || ctc.type === 'standard')) {
-            if (!currentTransitions.includes(ctcGlobalKey)) {
-                currentTransitions.push(ctcGlobalKey);
+        } else if (current.type === 'col') {
+            if (ctc && ctc.type === 'vertical') {
+                if (!currentBreakers.includes(ctcGlobalKey)) {
+                    currentBreakers.push(ctcGlobalKey);
+                }
             }
         }
 
@@ -757,15 +762,19 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
 
         // 3. Normal grid wire propagation
         if (current.type === 'col') {
-            // Standard contactor at this cell → can switch to row traversal (ignore ctc.closed!)
+            // Standard contactor at this cell → switch to row traversal (traverse standard contactor!)
             if (ctc && (!ctc.type || ctc.type === 'standard')) {
                 const rowKey = `${current.fieldId}-row-${current.r}-${current.c}`;
                 if (!visitedNodes.has(rowKey)) {
-                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: currentTransitions });
+                    const nextTransitions = [...currentTransitions];
+                    if (!nextTransitions.includes(ctcGlobalKey)) {
+                        nextTransitions.push(ctcGlobalKey);
+                    }
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions });
                 }
             }
 
-            // Continue up/down along col wire (ignore vertical breaker closed/open state)
+            // Continue up/down along col wire
             if (current.c > 0 && current.c < f.cols - 1) {
                 // Up
                 if (current.r > 1) {
@@ -782,15 +791,19 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
             }
 
         } else if (current.type === 'row') {
-            // Standard contactor → switch to col traversal (ignore ctc.closed!)
+            // Standard contactor → switch to col traversal (traverse standard contactor!)
             if (ctc && (!ctc.type || ctc.type === 'standard')) {
                 const colKey = `${current.fieldId}-col-${current.r}-${current.c}`;
                 if (!visitedNodes.has(colKey)) {
-                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: currentTransitions });
+                    const nextTransitions = [...currentTransitions];
+                    if (!nextTransitions.includes(ctcGlobalKey)) {
+                        nextTransitions.push(ctcGlobalKey);
+                    }
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions });
                 }
             }
 
-            // Continue left/right along row wire (ignore horizontal breaker closed/open state)
+            // Continue left/right along row wire
             if (current.r > 0 && current.r < f.rows - 1) {
                 // Left
                 if (current.c > 0) {
