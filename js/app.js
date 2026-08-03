@@ -2011,8 +2011,6 @@ function applyAutoConnections() {
     const claimedBuses = new Set();
     
     // Sort pistols based on their order in autoConnectOrder (FIFO priority for path stability)
-    // BUT put lastModifiedPistolUid at the very end of the array, so that any new or changed request
-    // acts as the last action and does not disconnect/override already-running stable lines!
     autoPistols.sort((a, b) => {
         if (a.uid === appState.lastModifiedPistolUid && b.uid !== appState.lastModifiedPistolUid) return 1;
         if (b.uid === appState.lastModifiedPistolUid && a.uid !== appState.lastModifiedPistolUid) return -1;
@@ -2023,18 +2021,6 @@ function applyAutoConnections() {
         if (idxA === -1) return 1;
         if (idxB === -1) return -1;
         return idxA - idxB;
-    });
-
-    // Calculate minInvPower
-    let minInvPower = 60;
-    appState.fields.forEach(f => {
-        for (let k in f.components) {
-            const c = f.components[k];
-            if (c.type === 'inverter') {
-                const p = getInverterPower(c, f.id, k);
-                if (p < minInvPower && p > 0) minInvPower = p;
-            }
-        }
     });
 
     if (!appState.pistolToInverterAffinity) {
@@ -2051,35 +2037,50 @@ function applyAutoConnections() {
         
         if (demand <= 0) return;
         
-        const numInverters = Math.ceil(demand / minInvPower);
         const pName = p.comp.name || `Пистолет ${p.key}`;
         const sheetNum = appState.fields.indexOf(p.field) + 1;
 
         let result = null;
         let isPartial = false;
-        let partialCount = 0;
+        let partialPower = 0;
 
         const affinityInvs = appState.pistolToInverterAffinity[p.uid] || [];
         const K = affinityInvs.length;
 
         if (K > 0) {
-            if (K >= numInverters) {
-                // Case: affinity is enough or demand decreased
-                const allowed = new Set(affinityInvs);
+            // Find total affinity power currently in the affinity list
+            let affinityPower = 0;
+            const allowed = new Set();
+            affinityInvs.forEach(invUid => {
+                const parts = invUid.split('-');
+                const fId = parseInt(parts[0]);
+                const r = parseInt(parts[1]);
+                const c = parseInt(parts[2]);
+                const f = appState.fields.find(x => x.id === fId);
+                if (f) {
+                    const comp = f.components[`${r}-${c}`];
+                    if (comp) {
+                        affinityPower += getInverterPower(comp, fId, `${r}-${c}`);
+                        allowed.add(invUid);
+                    }
+                }
+            });
+
+            if (affinityPower >= demand) {
+                // Case: affinity power is enough or demand decreased
                 let allUnclaimed = true;
                 allowed.forEach(invUid => {
                     if (claimedInverters.has(invUid)) allUnclaimed = false;
                 });
                 if (allUnclaimed) {
-                    result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters, allowed, claimedBuses);
+                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, allowed, claimedBuses);
                 }
                 if (!result || !result.reachable) {
                     // Fallback to search all
-                    result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters, null, claimedBuses);
+                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
                 }
             } else {
-                // Case: demand increased (K < numInverters). We need additional inverters.
-                const allowed = new Set(affinityInvs);
+                // Case: demand increased (affinityPower < demand). We need additional inverters.
                 let allUnclaimed = true;
                 allowed.forEach(invUid => {
                     if (claimedInverters.has(invUid)) allUnclaimed = false;
@@ -2087,20 +2088,19 @@ function applyAutoConnections() {
                 
                 let resultAffinity = null;
                 if (allUnclaimed) {
-                    resultAffinity = findOptimalPath(appState.fields, p.uid, K, claimedInverters, allowed, claimedBuses);
+                    // Grab all affinity inverters
+                    resultAffinity = findOptimalPath(appState.fields, p.uid, affinityPower, claimedInverters, allowed, claimedBuses);
                 }
                 
                 if (resultAffinity && resultAffinity.reachable) {
-                    // Temporarily claim affinity to search for extra
+                    // Temporarily claim affinity inverters to search for extra
                     const tempClaimedInverters = new Set(claimedInverters);
                     resultAffinity.usedInverters.forEach(inv => tempClaimedInverters.add(inv.uid));
                     
-                    const tempClaimedBuses = new Set(claimedBuses);
-                    if (resultAffinity.usedBuses) {
-                        resultAffinity.usedBuses.forEach(b => tempClaimedBuses.add(b));
-                    }
-                    
-                    const resultExtra = findOptimalPath(appState.fields, p.uid, numInverters - K, tempClaimedInverters, null, tempClaimedBuses);
+                    // Crucial: we do NOT add resultAffinity.usedBuses to claimedBuses during search for extra,
+                    // because the extra paths need to flow through this pistol's own starting row/col buses!
+                    const remainingPower = demand - affinityPower;
+                    const resultExtra = findOptimalPath(appState.fields, p.uid, remainingPower, tempClaimedInverters, null, claimedBuses);
                     
                     if (resultExtra.reachable) {
                         // Combined success!
@@ -2114,16 +2114,16 @@ function applyAutoConnections() {
                         // Cannot find extra, but we must KEEP the affinity connected (partial connection)
                         result = resultAffinity;
                         isPartial = true;
-                        partialCount = K;
+                        partialPower = affinityPower;
                     }
                 } else {
                     // If affinity itself is no longer reachable, search all from scratch
-                    result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters, null, claimedBuses);
+                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
                 }
             }
         } else {
             // New connection
-            result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters, null, claimedBuses);
+            result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
         }
 
         if (result && result.reachable) {
@@ -2161,7 +2161,7 @@ function applyAutoConnections() {
             });
 
             if (isPartial) {
-                const connectedP = partialCount * minInvPower;
+                const connectedP = partialPower;
                 appState.routingErrors.push(`Не удалось подключить всю мощность для ${pName} (Лист ${sheetNum})! Подключено ${connectedP} из ${demand} кВт.`);
             }
         } else {
@@ -2282,7 +2282,20 @@ function renderPistolDemandTable(simulationData) {
             const current = settings.current;
             const demandNum = (voltage * current) / 1000;
             
-            const invCount = demandNum > 0 ? Math.ceil(demandNum / minInvPower) : '—';
+            // Calculate local inverter power for local inverter count estimation
+            let localInvPower = 60;
+            for (let k in field.components) {
+                const c = field.components[k];
+                if (c.type === 'inverter') {
+                    const p = getInverterPower(c, field.id, k);
+                    if (p > 0) {
+                        localInvPower = p;
+                        break;
+                    }
+                }
+            }
+            
+            const invCount = demandNum > 0 ? Math.ceil(demandNum / localInvPower) : '—';
             const isPowerExcess = demandNum > totalInvPower;
 
             const isHighlighted = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid;
@@ -2367,8 +2380,21 @@ function renderPistolDemandTable(simulationData) {
                 const newDemand = (v * curI) / 1000;
                 powerCell.textContent = Math.round(newDemand * 10) / 10;
 
+                // Calculate local inverter power for local inverter count estimation
+                let localInvPower = 60;
+                for (let k in field.components) {
+                    const c = field.components[k];
+                    if (c.type === 'inverter') {
+                        const p = getInverterPower(c, field.id, k);
+                        if (p > 0) {
+                            localInvPower = p;
+                            break;
+                        }
+                    }
+                }
+                
                 const excess = newDemand > totalInvPower;
-                const cnt = newDemand > 0 ? Math.ceil(newDemand / minInvPower) : '—';
+                const cnt = newDemand > 0 ? Math.ceil(newDemand / localInvPower) : '—';
                 
                 cntCell.textContent = cnt;
                 cntCell.style.color = excess ? 'var(--danger)' : '';
@@ -2457,17 +2483,6 @@ function getClaimedInvertersForPistol(targetPistolUid, outClaimedBuses = null) {
         return idxA - idxB;
     });
 
-    let minInvPower = 60;
-    appState.fields.forEach(f => {
-        for (let k in f.components) {
-            const c = f.components[k];
-            if (c.type === 'inverter') {
-                const p = getInverterPower(c, f.id, k);
-                if (p < minInvPower && p > 0) minInvPower = p;
-            }
-        }
-    });
-
     autoPistols.forEach(p => {
         if (p.uid === targetPistolUid) return;
 
@@ -2478,8 +2493,6 @@ function getClaimedInvertersForPistol(targetPistolUid, outClaimedBuses = null) {
         
         if (demand <= 0) return;
         
-        const numInverters = Math.ceil(demand / minInvPower);
-        
         let result = null;
         const affinityInvs = appState.pistolToInverterAffinity ? appState.pistolToInverterAffinity[p.uid] : null;
         if (affinityInvs && affinityInvs.length > 0) {
@@ -2489,11 +2502,46 @@ function getClaimedInvertersForPistol(targetPistolUid, outClaimedBuses = null) {
                 if (claimed.has(invUid)) allUnclaimed = false;
             });
             if (allUnclaimed) {
-                result = findOptimalPath(appState.fields, p.uid, numInverters, claimed, allowed, claimedBuses);
+                // Find total affinity power
+                let affinityPower = 0;
+                affinityInvs.forEach(invUid => {
+                    const parts = invUid.split('-');
+                    const fId = parseInt(parts[0]);
+                    const r = parseInt(parts[1]);
+                    const c = parseInt(parts[2]);
+                    const f = appState.fields.find(x => x.id === fId);
+                    if (f) {
+                        const comp = f.components[`${r}-${c}`];
+                        if (comp) affinityPower += getInverterPower(comp, fId, `${r}-${c}`);
+                    }
+                });
+
+                if (affinityPower >= demand) {
+                    result = findOptimalPath(appState.fields, p.uid, demand, claimed, allowed, claimedBuses);
+                } else {
+                    // Grab affinity first, then extra
+                    const resultAffinity = findOptimalPath(appState.fields, p.uid, affinityPower, claimed, allowed, claimedBuses);
+                    if (resultAffinity && resultAffinity.reachable) {
+                        const tempClaimedInverters = new Set(claimed);
+                        resultAffinity.usedInverters.forEach(inv => tempClaimedInverters.add(inv.uid));
+                        const remainingPower = demand - affinityPower;
+                        const resultExtra = findOptimalPath(appState.fields, p.uid, remainingPower, tempClaimedInverters, null, claimedBuses);
+                        if (resultExtra.reachable) {
+                            result = {
+                                usedInverters: [...resultAffinity.usedInverters, ...resultExtra.usedInverters],
+                                usedBuses: new Set([...resultAffinity.usedBuses, ...resultExtra.usedBuses]),
+                                reachable: true
+                            };
+                        } else {
+                            result = resultAffinity;
+                        }
+                    }
+                }
             }
         }
+        
         if (!result || !result.reachable) {
-            result = findOptimalPath(appState.fields, p.uid, numInverters, claimed, null, claimedBuses);
+            result = findOptimalPath(appState.fields, p.uid, demand, claimed, null, claimedBuses);
         }
         
         if (result.reachable) {
@@ -2531,20 +2579,6 @@ window.highlightOptimalPath = function(pistolUid) {
     const i = (settings && settings.current !== undefined) ? settings.current : 20;
     const demand = (u * i) / 1000;
 
-    // Collect min inverter power
-    let minInvPower = 60;
-    appState.fields.forEach(f => {
-        for (let k in f.components) {
-            const c = f.components[k];
-            if (c.type === 'inverter') {
-                const p = getInverterPower(c, f.id, k);
-                if (p < minInvPower && p > 0) minInvPower = p;
-            }
-        }
-    });
-
-    const numInverters = demand > 0 ? Math.ceil(demand / minInvPower) : 1;
-    
     // Exclude inverters and buses already claimed by other auto-connected pistols
     const claimedBuses = new Set();
     const claimedInverters = getClaimedInvertersForPistol(pistolUid, claimedBuses);
@@ -2558,14 +2592,49 @@ window.highlightOptimalPath = function(pistolUid) {
             if (claimedInverters.has(invUid)) allUnclaimed = false;
         });
         if (allUnclaimed) {
-            result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters, allowed, claimedBuses);
+            // Find total affinity power
+            let affinityPower = 0;
+            affinityInvs.forEach(invUid => {
+                const parts = invUid.split('-');
+                const fId = parseInt(parts[0]);
+                const r = parseInt(parts[1]);
+                const c = parseInt(parts[2]);
+                const f = appState.fields.find(x => x.id === fId);
+                if (f) {
+                    const comp = f.components[`${r}-${c}`];
+                    if (comp) affinityPower += getInverterPower(comp, fId, `${r}-${c}`);
+                }
+            });
+
+            if (affinityPower >= demand) {
+                result = findOptimalPath(appState.fields, pistolUid, demand, claimedInverters, allowed, claimedBuses);
+            } else {
+                // Grab affinity first, then extra
+                const resultAffinity = findOptimalPath(appState.fields, pistolUid, affinityPower, claimedInverters, allowed, claimedBuses);
+                if (resultAffinity && resultAffinity.reachable) {
+                    const tempClaimedInverters = new Set(claimedInverters);
+                    resultAffinity.usedInverters.forEach(inv => tempClaimedInverters.add(inv.uid));
+                    const remainingPower = demand - affinityPower;
+                    const resultExtra = findOptimalPath(appState.fields, pistolUid, remainingPower, tempClaimedInverters, null, claimedBuses);
+                    if (resultExtra.reachable) {
+                        result = {
+                            pathSegments: new Set([...resultAffinity.pathSegments, ...resultExtra.pathSegments]),
+                            usedInverters: [...resultAffinity.usedInverters, ...resultExtra.usedInverters],
+                            usedContactors: [...resultAffinity.usedContactors, ...resultExtra.usedContactors],
+                            reachable: true
+                        };
+                    } else {
+                        result = resultAffinity;
+                    }
+                }
+            }
         }
     }
     if (!result || !result.reachable) {
-        result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters, null, claimedBuses);
+        result = findOptimalPath(appState.fields, pistolUid, demand, claimedInverters, null, claimedBuses);
     }
 
-    console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| minInvPower:', minInvPower, '| numInverters:', numInverters, '| claimed:', Array.from(claimedInverters));
+    console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| claimed:', Array.from(claimedInverters));
     console.log('[OptimalPath] result:', result.reachable, '| segments:', result.pathSegments ? result.pathSegments.size : 0, '| inverters:', result.usedInverters);
 
     appState.optimalPathHighlight = {
