@@ -1924,24 +1924,19 @@ function renderInverterSimulationTable(simulationData) {
             const uid = `${field.id}-${key}`;
             const maxPower = comp.power !== undefined ? comp.power : 60;
             
-            // Ensure settings are initialized
-            if (!appState.inverterSettings[uid]) {
-                appState.inverterSettings[uid] = {
-                    voltage: 500,
-                    current: (maxPower * 1000) / 500
-                };
-            }
-            
-            const settings = appState.inverterSettings[uid];
-            const voltage = settings.voltage;
-            const current = settings.current;
-            
             const isActive = simulationData.invReachesPistol && simulationData.invReachesPistol.has(uid);
-            // Real power shows load-based draw when connected, or 0 when disconnected
+            
+            // Read dynamic voltage and current from simulation data
+            const voltage = (isActive && simulationData.inverterRealVoltages) 
+                ? (simulationData.inverterRealVoltages[uid] || 0) 
+                : 0;
+            const current = (isActive && simulationData.inverterRealCurrents)
+                ? (simulationData.inverterRealCurrents[uid] || 0)
+                : 0;
+            
             const realPower = (isActive && simulationData.inverterRealPowers) 
                 ? (simulationData.inverterRealPowers[uid] || 0) 
                 : 0;
-            const maxI = voltage > 0 ? (maxPower * 1000 / voltage) : 0;
 
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
@@ -1950,70 +1945,12 @@ function renderInverterSimulationTable(simulationData) {
             tr.innerHTML = `
                 <td style="padding:4px; font-weight:bold; color:var(--text-main);">${comp.name}</td>
                 <td style="text-align:center; padding:4px; color:var(--text-muted);">${maxPower}</td>
-                <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:50px;">
-                </td>
-                <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:50px;" title="Макс. ток при U=${voltage}В: ${Math.round(maxI * 10) / 10}А">
-                </td>
+                <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${voltage}</td>
+                <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${Math.round(current * 10) / 10}</td>
                 <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${Math.round(realPower * 10) / 10}</td>
                 <td style="text-align:center; padding:4px; font-size:12px;">${isActive ? '🟢' : '⚪'}</td>
             `;
             tbody.appendChild(tr);
-
-            // Event bindings
-            const uInput = tr.querySelector('.u-input');
-            const iInput = tr.querySelector('.i-input');
-
-            const handleUChange = () => {
-                let v = parseFloat(uInput.value) || 0;
-                
-                // Clamp voltage bounds: 0 or 200..1000
-                if (v !== 0) {
-                    if (v < 200) v = 200;
-                    if (v > 1000) v = 1000;
-                }
-                
-                uInput.value = v;
-                appState.inverterSettings[uid].voltage = v;
-                
-                // Recalculate max allowed current for this voltage
-                const newMaxI = v > 0 ? (maxPower * 1000 / v) : 0;
-                let curI = parseFloat(iInput.value) || 0;
-                if (curI > newMaxI) {
-                    curI = newMaxI;
-                    iInput.value = Math.round(curI * 10) / 10;
-                    appState.inverterSettings[uid].current = curI;
-                }
-                
-                iInput.title = `Макс. ток при U=${v}В: ${Math.round(newMaxI * 10) / 10}А`;
-                
-                // Run simulation recalculation and redraw
-                updateCanvas();
-            };
-
-            const handleIChange = () => {
-                let v = appState.inverterSettings[uid].voltage;
-                let curI = parseFloat(iInput.value) || 0;
-                if (curI < 0) curI = 0;
-                
-                const newMaxI = v > 0 ? (maxPower * 1000 / v) : 0;
-                if (curI > newMaxI) {
-                    curI = newMaxI;
-                }
-                
-                iInput.value = Math.round(curI * 10) / 10;
-                appState.inverterSettings[uid].current = curI;
-                
-                // Run simulation recalculation and redraw
-                updateCanvas();
-            };
-
-            uInput.addEventListener('change', handleUChange);
-            uInput.addEventListener('blur', handleUChange);
-            
-            iInput.addEventListener('change', handleIChange);
-            iInput.addEventListener('blur', handleIChange);
         }
     });
 

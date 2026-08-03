@@ -44,6 +44,15 @@ function getPistolDemand(fieldId, key) {
     return 10; // default 10 kW
 }
 
+function getPistolVoltage(fieldId, key) {
+    const uid = `${fieldId}-${key}`;
+    if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[uid]) {
+        const s = window.appState.pistolDemands[uid];
+        return s.voltage !== undefined ? s.voltage : 500;
+    }
+    return 500;
+}
+
 function calculateSimulation(fields) {
     const activePaths = new Set();
     const contactorPowers = {};
@@ -532,10 +541,15 @@ function calculateSimulation(fields) {
 
     // Now, accumulate contactor powers and currents from BFS paths
     for (let invUid in inverterToPaths) {
-        const parts = invUid.split('-');
-        const fId = parseInt(parts[0]);
-        const r = parseInt(parts[1].split('-')[0]); // inverter row
-        const invVolt = getInverterVoltage(fields, fId, r);
+        // Find connected pistol's voltage for this inverter dynamically
+        let invVolt = 0;
+        for (let pistolUid in pistolToInverters) {
+            if (pistolToInverters[pistolUid].includes(invUid)) {
+                const parts = pistolUid.split('-');
+                invVolt = getPistolVoltage(parts[0], `${parts[1]}-${parts[2]}`);
+                break;
+            }
+        }
 
         inverterToPaths[invUid].forEach(pathData => {
             const pUid = pathData.pistolUid;
@@ -558,7 +572,7 @@ function calculateSimulation(fields) {
         });
     }
 
-    // Process Ring Solvers with actual loads
+    // Process Ring Solvers with actual loads and dynamic voltage
     if (window.ringSolversList) {
         window.ringSolversList.forEach(ring => {
             const { ringInverters, ringBreakers, ringTotal, loadFId, loadR } = ring;
@@ -572,7 +586,20 @@ function calculateSimulation(fields) {
 
             const scale = ringTotal > 0 ? (ringActualLoad / ringTotal) : 0;
             const branchP = (ringTotal / 2) * scale;
-            const ringVolt = getInverterVoltage(fields, ringInverters[0].fId, ringInverters[0].r);
+            
+            // Find ring voltage dynamically from connected pistols
+            let ringVolt = 0;
+            for (let i = 0; i < N; i++) {
+                const riUid = `${ringInverters[i].fId}-${ringInverters[i].r}-0`;
+                for (let pistolUid in pistolToInverters) {
+                    if (pistolToInverters[pistolUid].includes(riUid)) {
+                        const parts = pistolUid.split('-');
+                        ringVolt = getPistolVoltage(parts[0], `${parts[1]}-${parts[2]}`);
+                        break;
+                    }
+                }
+                if (ringVolt > 0) break;
+            }
             
             let cumP = 0;
             ringBreakers.forEach((bKey, idx) => {
@@ -592,7 +619,6 @@ function calculateSimulation(fields) {
                     if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
                         const ctcKey = `${loadFId}-ctc-${loadR}-${c}`;
                         contactorPowers[ctcKey] = ringActualLoad;
-                        const ringVolt = getInverterVoltage(fields, loadFId, loadR);
                         contactorCurrents[ctcKey] = ringVolt > 0 ? (contactorPowers[ctcKey] * 1000) / ringVolt : 0;
                     }
                 }
@@ -600,6 +626,33 @@ function calculateSimulation(fields) {
         });
         window.ringSolversList = [];
     }
+
+    // Compile dynamic real voltages and currents for inverters to report to table
+    const inverterRealVoltages = {};
+    const inverterRealCurrents = {};
+    fields.forEach(f => {
+        for (let k in f.components) {
+            const comp = f.components[k];
+            if (comp.type === 'inverter') {
+                const invUid = `${f.id}-${k}`;
+                
+                let invVolt = 0;
+                for (let pistolUid in pistolToInverters) {
+                    if (pistolToInverters[pistolUid].includes(invUid)) {
+                        const parts = pistolUid.split('-');
+                        invVolt = getPistolVoltage(parts[0], `${parts[1]}-${parts[2]}`);
+                        break;
+                    }
+                }
+                
+                const realP = inverterRealPowers[invUid] || 0;
+                const realI = invVolt > 0 ? (realP * 1000) / invVolt : 0;
+                
+                inverterRealVoltages[invUid] = invVolt;
+                inverterRealCurrents[invUid] = realI;
+            }
+        }
+    });
 
     return {
         activePaths,
@@ -609,7 +662,9 @@ function calculateSimulation(fields) {
         errorMessages,
         flowDirections,
         invReachesPistol,
-        inverterRealPowers
+        inverterRealPowers,
+        inverterRealVoltages,
+        inverterRealCurrents
     };
 }
 
