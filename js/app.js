@@ -43,6 +43,7 @@ function updateCanvas() {
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [] };
     
     if (appState.isSimulationMode) {
+        applyAutoConnections();
         simulationData = calculateSimulation(appState.fields);
     }
     
@@ -2024,6 +2025,111 @@ function renderInverterSimulationTable(simulationData) {
 }
 
 /**
+ * Automates contactor switching for checked pistols.
+ * Excludes already claimed inverters from path searches.
+ */
+function applyAutoConnections() {
+    if (!appState.autoClosedContactors) {
+        appState.autoClosedContactors = [];
+    }
+
+    // 1. Collect all auto-connected pistols
+    const autoPistols = [];
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type === 'pistol') {
+                const uid = `${field.id}-${key}`;
+                if (!appState.pistolDemands[uid] || typeof appState.pistolDemands[uid] !== 'object') {
+                    const legacyVal = parseFloat(appState.pistolDemands[uid]) || 10;
+                    appState.pistolDemands[uid] = {
+                        voltage: 500,
+                        current: (legacyVal * 1000) / 500,
+                        autoConnect: false
+                    };
+                }
+                if (appState.pistolDemands[uid].autoConnect) {
+                    autoPistols.push({ uid, field, key, comp });
+                }
+            }
+        }
+    });
+
+    // 2. Open all contactors that were closed by auto-connect previously
+    appState.autoClosedContactors.forEach(ctcKey => {
+        const parts = ctcKey.split('-');
+        const fId = parseInt(parts[0]);
+        const r = parts[2];
+        const c = parts[3];
+        const field = appState.fields.find(f => f.id === fId);
+        if (field) {
+            const ctc = field.contactors[`${r}-${c}`];
+            if (ctc) {
+                ctc.closed = false;
+            }
+        }
+    });
+    appState.autoClosedContactors = [];
+
+    // 3. Run pathfinding for each auto-connected pistol sequentially
+    const claimedInverters = new Set();
+    
+    // Deterministic sheet-based sort
+    autoPistols.sort((a, b) => a.uid.localeCompare(b.uid));
+
+    // Calculate minInvPower
+    let minInvPower = 60;
+    appState.fields.forEach(f => {
+        for (let k in f.components) {
+            const c = f.components[k];
+            if (c.type === 'inverter') {
+                const p = getInverterPower(c, f.id, k);
+                if (p < minInvPower && p > 0) minInvPower = p;
+            }
+        }
+    });
+
+    autoPistols.forEach(p => {
+        const settings = appState.pistolDemands[p.uid];
+        const u = settings.voltage || 0;
+        const i = settings.current || 0;
+        const demand = (u * i) / 1000;
+        
+        if (demand <= 0) return;
+        
+        const numInverters = Math.ceil(demand / minInvPower);
+        
+        // Find path excluding claimed inverters
+        const result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters);
+        
+        if (result.reachable) {
+            // Claim the inverters used
+            result.usedInverters.forEach(inv => {
+                claimedInverters.add(inv.uid);
+            });
+            
+            // Close all contactors along the path and add to autoClosedContactors list
+            result.usedContactors.forEach(ctcKey => {
+                const parts = ctcKey.split('-');
+                const fId = parseInt(parts[0]);
+                const r = parts[2];
+                const c = parts[3];
+                const f = appState.fields.find(x => x.id === fId);
+                if (f) {
+                    const ctc = f.contactors[`${r}-${c}`];
+                    if (ctc) {
+                        ctc.closed = true;
+                        if (!appState.autoClosedContactors.includes(ctcKey)) {
+                            appState.autoClosedContactors.push(ctcKey);
+                        }
+                    }
+                }
+            });
+        }
+    });
+}
+
+/**
  * Renders the pistol demand table inside #pistol-demand-wrap.
  * Preserves existing input values (pistolDemands) between re-renders.
  */
@@ -2045,6 +2151,7 @@ function renderPistolDemandTable(simulationData) {
                         <th style="text-align:center; padding:4px;">I, А</th>
                         <th style="text-align:center; padding:4px;">Р, кВт</th>
                         <th style="text-align:center; padding:4px;">Инв.</th>
+                        <th style="text-align:center; padding:4px;">Авто</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -2091,7 +2198,8 @@ function renderPistolDemandTable(simulationData) {
                 const legacyVal = parseFloat(appState.pistolDemands[uid]) || 10;
                 appState.pistolDemands[uid] = {
                     voltage: 500,
-                    current: (legacyVal * 1000) / 500
+                    current: (legacyVal * 1000) / 500,
+                    autoConnect: false
                 };
             }
             
@@ -2108,20 +2216,29 @@ function renderPistolDemandTable(simulationData) {
                 ? appState.optimalPathHighlight
                 : null;
 
+            const pActual = simulationData.pistolPowers[uid] || 0;
+            const isMet = pActual >= demandNum && demandNum > 0;
+            const statusIcon = isMet ? '<span style="color:#00ff88; margin-right:4px;">✅</span>' : '<span style="color:#ffaa00; margin-right:4px;">🟠</span>';
+
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
             tr.style.height = '32px';
             
             tr.innerHTML = `
-                <td class="demand-name-cell" title="${comp.name}" style="padding:4px; font-weight:bold; color:var(--text-main); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${comp.name}</td>
-                <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:45px;">
+                <td class="demand-name-cell" title="${comp.name}" style="padding:4px; font-weight:bold; color:var(--text-main); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    ${statusIcon} ${comp.name}
                 </td>
                 <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:45px;">
+                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:40px;">
+                </td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:40px;">
                 </td>
                 <td class="power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isPowerExcess ? 'var(--danger)' : 'var(--text-main)'};">${Math.round(demandNum * 10) / 10}</td>
                 <td class="demand-count-cell" style="text-align:center; padding:4px; ${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="checkbox" class="auto-connect-checkbox" data-uid="${uid}" ${settings.autoConnect ? 'checked' : ''} style="cursor:pointer; accent-color:var(--primary); width:14px; height:14px;">
+                </td>
                 <td style="text-align:center; padding:4px;">
                     <button
                         class="demand-find-btn ${isHighlighted ? (lastResult && lastResult.reachable ? 'active' : 'unreachable') : ''}"
@@ -2147,7 +2264,7 @@ function renderPistolDemandTable(simulationData) {
                 infoText = '<span style="color: var(--danger)">⚠️ Маршрут не найден</span>';
             }
             
-            infoTr.innerHTML = `<td colspan="6" class="demand-info-cell" style="padding:4px; font-size:10px; color:var(--text-muted);">${infoText}</td>`;
+            infoTr.innerHTML = `<td colspan="7" class="demand-info-cell" style="padding:4px; font-size:10px; color:var(--text-muted);">${infoText}</td>`;
             tbody.appendChild(infoTr);
 
             // Event bindings
@@ -2156,6 +2273,7 @@ function renderPistolDemandTable(simulationData) {
             const powerCell = tr.querySelector('.power-cell');
             const cntCell = tr.querySelector('.demand-count-cell');
             const infoCell = infoTr.querySelector('.demand-info-cell');
+            const autoCheckbox = tr.querySelector('.auto-connect-checkbox');
 
             const recalculateRow = () => {
                 let v = parseFloat(uInput.value) || 0;
@@ -2202,6 +2320,11 @@ function renderPistolDemandTable(simulationData) {
             uInput.addEventListener('blur', recalculateRow);
             iInput.addEventListener('change', recalculateRow);
             iInput.addEventListener('blur', recalculateRow);
+            
+            autoCheckbox.addEventListener('change', function() {
+                appState.pistolDemands[uid].autoConnect = this.checked;
+                updateCanvas();
+            });
 
             // Bind find button
             const findBtn = tr.querySelector('.demand-find-btn');
@@ -2213,7 +2336,7 @@ function renderPistolDemandTable(simulationData) {
 
     if (pistolCount === 0) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="6" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
+        tr.innerHTML = `<td colspan="7" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
         tbody.appendChild(tr);
     }
 }
