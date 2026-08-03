@@ -434,3 +434,143 @@ function calculateSimulation(fields) {
         flowDirections
     };
 }
+
+/**
+ * Find optimal path from required inverters to a specific pistol.
+ * Runs a reverse BFS from the pistol through closed contactors to discover reachable inverters,
+ * recording the wire segment IDs along the way. Selects the closest `numInverters` inverters
+ * by path length (hop count) and returns their combined segment sets for green-line highlighting.
+ *
+ * @param {Array} fields - All field objects
+ * @param {string} pistolUid - Pistol unique ID: "{fieldId}-{r}-{c}"
+ * @param {number} numInverters - How many inverters we need
+ * @returns {{ pathSegments: Set<string>, usedInverters: Array, reachable: boolean }}
+ */
+function findOptimalPath(fields, pistolUid, numInverters) {
+    const parts = pistolUid.split('-');
+    const pistolFieldId = parseInt(parts[0]);
+    const pistolR = parseInt(parts[1]);
+    const pistolC = parseInt(parts[2]);
+
+    const pistolField = fields.find(f => f.id === pistolFieldId);
+    if (!pistolField) return { pathSegments: new Set(), usedInverters: [], reachable: false };
+
+    const foundInverters = []; // { uid, name, power, segments, hops }
+    const visitedNodes = new Set();
+    const queue = [];
+
+    // Seed BFS: start in col mode moving upward from the pistol cell
+    if (pistolC > 0 && pistolC < pistolField.cols - 1) {
+        // Move up from pistol row
+        if (pistolR > 1) {
+            const nextR = pistolR - 1;
+            const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${nextR}`;
+            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId] });
+        }
+        // Move down from pistol row (edge case topologies)
+        if (pistolR < pistolField.rows - 2) {
+            const nextR = pistolR + 1;
+            const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${pistolR}`;
+            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId] });
+        }
+    }
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        const nodeKey = `${current.fieldId}-${current.type}-${current.r}-${current.c}`;
+        if (visitedNodes.has(nodeKey)) continue;
+        visitedNodes.add(nodeKey);
+
+        const f = fields.find(x => x.id === current.fieldId);
+        if (!f) continue;
+
+        const cKey = `${current.r}-${current.c}`;
+        const ctc = f.contactors[cKey];
+        const cellComp = f.components[cKey];
+
+        // Found an inverter — record it
+        if (cellComp && cellComp.type === 'inverter') {
+            foundInverters.push({
+                uid: `${current.fieldId}-${cKey}`,
+                name: cellComp.name,
+                power: cellComp.power !== undefined ? cellComp.power : 60,
+                segments: current.segments,
+                hops: current.segments.length
+            });
+            continue; // Do not propagate beyond the inverter
+        }
+
+        if (current.type === 'col') {
+            // Standard closed contactor at this cell → can switch to row traversal
+            if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
+                const rowKey = `${current.fieldId}-row-${current.r}-${current.c}`;
+                if (!visitedNodes.has(rowKey)) {
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments });
+                }
+            }
+
+            // Continue up/down along the col wire (unless blocked by open vertical contactor)
+            const vertBlocked = ctc && ctc.type === 'vertical' && !ctc.closed;
+            if (!vertBlocked && current.c > 0 && current.c < f.cols - 1) {
+                // Up
+                if (current.r > 1) {
+                    const nextR = current.r - 1;
+                    const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${nextR}`;
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId] });
+                }
+                // Down
+                if (current.r < f.rows - 2) {
+                    const nextR = current.r + 1;
+                    const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${current.r}`;
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId] });
+                }
+            }
+
+        } else if (current.type === 'row') {
+            // Standard closed contactor → switch to col traversal
+            if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
+                const colKey = `${current.fieldId}-col-${current.r}-${current.c}`;
+                if (!visitedNodes.has(colKey)) {
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments });
+                }
+            }
+
+            // Continue left/right along the row wire (unless blocked by open horizontal contactor)
+            const horizBlocked = ctc && ctc.type === 'horizontal' && !ctc.closed;
+            if (!horizBlocked && current.r > 0 && current.r < f.rows - 1) {
+                // Left
+                if (current.c > 0) {
+                    const nextC = current.c - 1;
+                    const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${nextC}`;
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId] });
+                }
+                // Right
+                if (current.c < f.cols - 1) {
+                    const nextC = current.c + 1;
+                    const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${current.c}`;
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId] });
+                }
+            }
+        }
+    }
+
+    if (foundInverters.length === 0) {
+        return { pathSegments: new Set(), usedInverters: [], reachable: false };
+    }
+
+    // Sort by path length (fewest hops = closest inverter)
+    foundInverters.sort((a, b) => a.hops - b.hops);
+
+    // Take the closest numInverters
+    const selected = foundInverters.slice(0, numInverters);
+
+    // Union all segment IDs from selected paths
+    const pathSegments = new Set();
+    selected.forEach(inv => inv.segments.forEach(segId => pathSegments.add(segId)));
+
+    return {
+        pathSegments,
+        usedInverters: selected.map(inv => ({ uid: inv.uid, name: inv.name, power: inv.power })),
+        reachable: true
+    };
+}

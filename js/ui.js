@@ -21,6 +21,8 @@ function createInitialState() {
         isSimulationMode: false,
         showPowerFlow: true,
         showFlowArrows: true,
+        pistolDemands: {},         // { "fieldId-r-c": number (kW) }
+        optimalPathHighlight: null, // { pistolUid, pathSegments: Set<string> } | null
         selectedKeys: new Set(),
         historyStack: [],
         redoStack: [],

@@ -83,6 +83,7 @@ function updateCanvas() {
             isSimulationMode: appState.isSimulationMode,
             showPowerFlow: appState.showPowerFlow,
             showFlowArrows: appState.showFlowArrows,
+            optimalPathHighlight: appState.optimalPathHighlight,
             selectedKeys: appState.selectedKeys,
             activeTool: appState.activeTool,
             onUpdateCanvas: updateCanvas,
@@ -1659,6 +1660,8 @@ function renderPistolSummaries(simulationData) {
         }
     });
 
+    renderPistolDemandTable(simulationData);
+
     const titleLabel = document.getElementById('power-section-title');
     if (titleLabel) {
         titleLabel.innerText = "Активная мощность";
@@ -1690,6 +1693,177 @@ function renderPistolSummaries(simulationData) {
         list.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">Нет пистолетов на схеме. Разместите их на нижнем поле.</div>';
     }
 }
+
+/**
+ * Renders the pistol demand table inside #pistol-demand-wrap.
+ * Preserves existing input values (pistolDemands) between re-renders.
+ */
+function renderPistolDemandTable(simulationData) {
+    // Find/create wrapper inside #sidebar-pistol-outputs
+    const outputsPanel = document.getElementById('sidebar-pistol-outputs');
+    if (!outputsPanel) return;
+
+    let wrap = document.getElementById('pistol-demand-wrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'pistol-demand-wrap';
+        wrap.innerHTML = `
+            <div class="section-title">📋 Заявка мощности</div>
+            <table id="pistol-demand-table">
+                <thead>
+                    <tr>
+                        <th>Пистолет</th>
+                        <th>Заявка, кВт</th>
+                        <th style="text-align:center;">Инв.</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="pistol-demand-tbody"></tbody>
+            </table>
+        `;
+        // Insert before routing-summary div
+        const routingSummary = document.getElementById('routing-summary');
+        if (routingSummary) {
+            outputsPanel.insertBefore(wrap, routingSummary);
+        } else {
+            outputsPanel.appendChild(wrap);
+        }
+    }
+
+    const tbody = document.getElementById('pistol-demand-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Collect minimum inverter power for calculation
+    let minInvPower = 60;
+    appState.fields.forEach(f => {
+        for (let k in f.components) {
+            const c = f.components[k];
+            if (c.type === 'inverter') {
+                const p = c.power !== undefined ? c.power : 60;
+                if (p < minInvPower) minInvPower = p;
+            }
+        }
+    });
+
+    let pistolCount = 0;
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type !== 'pistol') continue;
+
+            pistolCount++;
+            const uid = `${field.id}-${key}`;
+            const currentDemand = appState.pistolDemands[uid] || '';
+            const demandNum = parseFloat(currentDemand) || 0;
+            const invCount = demandNum > 0 ? Math.ceil(demandNum / minInvPower) : '—';
+
+            const isHighlighted = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid;
+            const lastResult = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid
+                ? appState.optimalPathHighlight
+                : null;
+
+            // Main row
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="demand-name-cell" title="${comp.name}">${comp.name}</td>
+                <td>
+                    <input
+                        type="number"
+                        class="demand-input"
+                        min="0"
+                        step="1"
+                        value="${currentDemand}"
+                        data-uid="${uid}"
+                        placeholder="кВт"
+                    >
+                </td>
+                <td class="demand-count-cell">${invCount}</td>
+                <td>
+                    <button
+                        class="demand-find-btn ${isHighlighted ? (lastResult && lastResult.reachable ? 'active' : 'unreachable') : ''}"
+                        data-uid="${uid}"
+                        title="${isHighlighted ? 'Скрыть маршрут' : 'Найти оптимальный маршрут'}"
+                    >${isHighlighted ? (lastResult && lastResult.reachable ? '✅' : '❌') : '🔍'}</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+
+            // Info row (shown when highlighted)
+            const infoTr = document.createElement('tr');
+            infoTr.className = `demand-info-row${isHighlighted && lastResult && lastResult.reachable ? ' visible' : ''}`;
+            infoTr.innerHTML = `<td colspan="4" class="demand-info-cell">${
+                isHighlighted && lastResult && lastResult.reachable
+                    ? 'Инверторы: ' + lastResult.usedInverters.map(i => i.name).join(', ')
+                    : isHighlighted && lastResult && !lastResult.reachable
+                        ? '⚠️ Маршрут не найден'
+                        : ''
+            }</td>`;
+            tbody.appendChild(infoTr);
+
+            // Bind demand input
+            const input = tr.querySelector('.demand-input');
+            input.addEventListener('input', function() {
+                appState.pistolDemands[this.dataset.uid] = this.value;
+                // Update count cell without full re-render
+                const val = parseFloat(this.value) || 0;
+                const cnt = val > 0 ? Math.ceil(val / minInvPower) : '—';
+                tr.querySelector('.demand-count-cell').textContent = cnt;
+            });
+
+            // Bind find button
+            const findBtn = tr.querySelector('.demand-find-btn');
+            findBtn.addEventListener('click', function() {
+                window.highlightOptimalPath(this.dataset.uid);
+            });
+        }
+    });
+
+    if (pistolCount === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+/**
+ * Toggle highlight of the optimal path to a pistol.
+ * If the same pistol is clicked again — clears the highlight.
+ */
+window.highlightOptimalPath = function(pistolUid) {
+    // Toggle off if same pistol is already highlighted
+    if (appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === pistolUid) {
+        appState.optimalPathHighlight = null;
+        updateCanvas();
+        return;
+    }
+
+    const demand = parseFloat(appState.pistolDemands[pistolUid]) || 0;
+
+    // Collect min inverter power
+    let minInvPower = 60;
+    appState.fields.forEach(f => {
+        for (let k in f.components) {
+            const c = f.components[k];
+            if (c.type === 'inverter') {
+                const p = c.power !== undefined ? c.power : 60;
+                if (p < minInvPower) minInvPower = p;
+            }
+        }
+    });
+
+    const numInverters = demand > 0 ? Math.ceil(demand / minInvPower) : 1;
+    const result = findOptimalPath(appState.fields, pistolUid, numInverters);
+
+    appState.optimalPathHighlight = {
+        pistolUid,
+        pathSegments: result.pathSegments,
+        usedInverters: result.usedInverters,
+        reachable: result.reachable
+    };
+
+    updateCanvas();
+};
 
 function updateActivePowerDesignMode() {
     let totalInverterPower = 0;
@@ -1836,6 +2010,9 @@ window.addEventListener('keydown', (e) => {
 window.updateCanvas = updateCanvas;
 window.setMode = function(isSim) {
     appState.isSimulationMode = isSim;
+    if (!isSim) {
+        appState.optimalPathHighlight = null;
+    }
     document.getElementById('mode-btn-design')?.classList.toggle('active', !isSim);
     document.getElementById('mode-btn-sim')?.classList.toggle('active', isSim);
     

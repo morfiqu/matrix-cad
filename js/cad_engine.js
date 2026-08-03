@@ -9,7 +9,8 @@ const marginX = 150;
 const marginY = 90;
 
 function renderField(field, svg, simulationData, state) {
-    const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, showFlowArrows, selectedKeys } = state;
+    const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, showFlowArrows, selectedKeys, optimalPathHighlight } = state;
+
     
     svg.innerHTML = '';
     
@@ -25,7 +26,7 @@ function renderField(field, svg, simulationData, state) {
         drawCenteredResizeButtons(field, svg, state);
     }
     
-    drawWiring(field, svg, activePaths, state, simulationData);
+    drawWiring(field, svg, activePaths, state, simulationData, optimalPathHighlight);
     drawPlacedComponents(field, svg, simulationData, state);
     drawGridPointsAndContactors(field, svg, simulationData, state);
     
@@ -736,7 +737,7 @@ function hasPathBlockers(field, type, index) {
     return false;
 }
 
-function drawWiring(field, svg, activePaths, state, simulationData) {
+function drawWiring(field, svg, activePaths, state, simulationData, optimalPath) {
     const isAnim = state && state.isSimulationMode && state.showFlowArrows;
 
     if (isAnim) {
@@ -911,6 +912,49 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
                 lineNInner.setAttribute("y2", y2);
                 lineNInner.setAttribute("class", `wire-n-inner ${isActiveN ? 'active' : ''}`);
                 svg.appendChild(lineNInner);
+            }
+        }
+    }
+
+    // ── Green optimal-path overlay ──────────────────────────────────────────
+    if (optimalPath && optimalPath.pathSegments && optimalPath.pathSegments.size > 0) {
+        const optSegs = optimalPath.pathSegments;
+        // Draw horizontal row segments
+        for (let r = 1; r < field.rows - 1; r++) {
+            const y = marginY + r * cellHeight;
+            for (let c = 0; c < field.cols - 1; c++) {
+                const segId = `${field.id}-wire-row-p-seg-${r}-${c}`;
+                if (!optSegs.has(segId)) continue;
+                const x1 = marginX + c * cellWidth;
+                const x2 = marginX + (c + 1) * cellWidth;
+                const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                gl.setAttribute("x1", x1); gl.setAttribute("y1", y - 4);
+                gl.setAttribute("x2", x2); gl.setAttribute("y2", y - 4);
+                gl.setAttribute("stroke", "#00ff88");
+                gl.setAttribute("stroke-width", "3");
+                gl.setAttribute("stroke-linecap", "round");
+                gl.setAttribute("opacity", "0.82");
+                gl.setAttribute("pointer-events", "none");
+                svg.appendChild(gl);
+            }
+        }
+        // Draw vertical col segments
+        for (let c = 1; c < field.cols - 1; c++) {
+            const x = marginX + c * cellWidth;
+            for (let r = 0; r < field.rows - 1; r++) {
+                const segId = `${field.id}-wire-col-p-seg-${c}-${r}`;
+                if (!optSegs.has(segId)) continue;
+                const y1 = marginY + r * cellHeight;
+                const y2 = marginY + (r + 1) * cellHeight;
+                const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                gl.setAttribute("x1", x - 4); gl.setAttribute("y1", y1);
+                gl.setAttribute("x2", x - 4); gl.setAttribute("y2", y2);
+                gl.setAttribute("stroke", "#00ff88");
+                gl.setAttribute("stroke-width", "3");
+                gl.setAttribute("stroke-linecap", "round");
+                gl.setAttribute("opacity", "0.82");
+                gl.setAttribute("pointer-events", "none");
+                svg.appendChild(gl);
             }
         }
     }
