@@ -776,7 +776,7 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
     const pistolField = fields.find(f => f.id === pistolFieldId);
     if (!pistolField) return { pathSegments: new Set(), usedInverters: [], usedContactors: [], usedBuses: new Set(), reachable: false };
 
-    const foundInverters = []; // { uid, name, power, segments, breakers, transitions, hops }
+    const foundInverters = []; // { uid, name, power, segments, breakers, transitions, cost }
     const visitedNodes = new Set();
     const queue = [];
 
@@ -786,13 +786,13 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
         if (pistolR > 1) {
             const nextR = pistolR - 1;
             const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${nextR}`;
-            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [] });
+            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [], cost: 1 });
         }
         // Move down from pistol row (edge case topologies)
         if (pistolR < pistolField.rows - 2) {
             const nextR = pistolR + 1;
             const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${pistolR}`;
-            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [] });
+            queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [], cost: 1 });
         }
     }
 
@@ -858,12 +858,12 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
                 segments: current.segments,
                 breakers: currentBreakers,
                 transitions: currentTransitions,
-                hops: current.segments.length
+                cost: current.cost
             });
             continue; // Do not propagate beyond the inverter
         }
 
-        // 2. Found a cable — jump to connected sheets
+        // 2. Found a cable — jump to connected sheets (apply jump penalty: +500)
         if (cellComp && cellComp.type === 'cable') {
             const netName = cellComp.name.toLowerCase();
             fields.forEach(otherField => {
@@ -898,21 +898,21 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
                         if (oHasRow && oR > 0 && oR < otherField.rows - 1) {
                             if (oC > 0) {
                                 const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC - 1}`;
-                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + 500 });
                             }
                             if (oC < otherField.cols - 1) {
                                 const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC}`;
-                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + 500 });
                             }
                         }
                         if (oHasCol && oC > 0 && oC < otherField.cols - 1) {
                             if (oR > 0) {
                                 const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR - 1}`;
-                                queue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                                queue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + 500 });
                             }
                             if (oR < otherField.rows - 1) {
                                 const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR}`;
-                                queue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                                queue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + 500 });
                             }
                         }
                     }
@@ -930,23 +930,24 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
                     if (!nextTransitions.includes(ctcGlobalKey)) {
                         nextTransitions.push(ctcGlobalKey);
                     }
-                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost });
                 }
             }
 
-            // Continue up/down along col wire
+            // Continue up/down along col wire (apply breaker penalty if traversing a breaker: +100)
             if (current.c > 0 && current.c < f.cols - 1) {
+                const breakerPenalty = (ctc && ctc.type === 'vertical') ? 100 : 0;
                 // Up
                 if (current.r > 1) {
                     const nextR = current.r - 1;
                     const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${nextR}`;
-                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + breakerPenalty });
                 }
                 // Down
                 if (current.r < f.rows - 2) {
                     const nextR = current.r + 1;
                     const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${current.r}`;
-                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + breakerPenalty });
                 }
             }
 
@@ -959,23 +960,24 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
                     if (!nextTransitions.includes(ctcGlobalKey)) {
                         nextTransitions.push(ctcGlobalKey);
                     }
-                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost });
                 }
             }
 
-            // Continue left/right along row wire
+            // Continue left/right along row wire (apply breaker penalty if traversing a breaker: +100)
             if (current.r > 0 && current.r < f.rows - 1) {
+                const breakerPenalty = (ctc && ctc.type === 'horizontal') ? 100 : 0;
                 // Left
                 if (current.c > 0) {
                     const nextC = current.c - 1;
                     const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${nextC}`;
-                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + breakerPenalty });
                 }
                 // Right
                 if (current.c < f.cols - 1) {
                     const nextC = current.c + 1;
                     const segId = `${current.fieldId}-wire-row-p-seg-${current.r}-${current.c}`;
-                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions });
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: nextC, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + 1 + breakerPenalty });
                 }
             }
         }
@@ -985,8 +987,8 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
         return { pathSegments: new Set(), usedInverters: [], usedContactors: [], usedBuses: new Set(), reachable: false };
     }
 
-    // Sort by path length (fewest hops = closest inverter)
-    foundInverters.sort((a, b) => a.hops - b.hops);
+    // Sort by path cost (fewest cost = closest preferred inverter)
+    foundInverters.sort((a, b) => a.cost - b.cost);
 
     // Take the closest numInverters
     const selected = foundInverters.slice(0, numInverters);
