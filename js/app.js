@@ -2342,6 +2342,61 @@ function renderPistolDemandTable(simulationData) {
 }
 
 /**
+ * Helper to get the set of inverters occupied by other auto-connected pistols.
+ */
+function getClaimedInvertersForPistol(targetPistolUid) {
+    const claimed = new Set();
+    
+    const autoPistols = [];
+    appState.fields.forEach(field => {
+        for (let key in field.components) {
+            const comp = field.components[key];
+            if (comp.type === 'pistol') {
+                const uid = `${field.id}-${key}`;
+                if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                    autoPistols.push({ uid, field, key, comp });
+                }
+            }
+        }
+    });
+
+    autoPistols.sort((a, b) => a.uid.localeCompare(b.uid));
+
+    let minInvPower = 60;
+    appState.fields.forEach(f => {
+        for (let k in f.components) {
+            const c = f.components[k];
+            if (c.type === 'inverter') {
+                const p = getInverterPower(c, f.id, k);
+                if (p < minInvPower && p > 0) minInvPower = p;
+            }
+        }
+    });
+
+    autoPistols.forEach(p => {
+        if (p.uid === targetPistolUid) return;
+
+        const settings = appState.pistolDemands[p.uid];
+        const u = settings.voltage || 0;
+        const i = settings.current || 0;
+        const demand = (u * i) / 1000;
+        
+        if (demand <= 0) return;
+        
+        const numInverters = Math.ceil(demand / minInvPower);
+        const result = findOptimalPath(appState.fields, p.uid, numInverters, claimed);
+        
+        if (result.reachable) {
+            result.usedInverters.forEach(inv => {
+                claimed.add(inv.uid);
+            });
+        }
+    });
+
+    return claimed;
+}
+
+/**
  * Toggle highlight of the optimal path to a pistol.
  * If the same pistol is clicked again — clears the highlight.
  */
@@ -2371,8 +2426,12 @@ window.highlightOptimalPath = function(pistolUid) {
     });
 
     const numInverters = demand > 0 ? Math.ceil(demand / minInvPower) : 1;
-    console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| minInvPower:', minInvPower, '| numInverters:', numInverters);
-    const result = findOptimalPath(appState.fields, pistolUid, numInverters);
+    
+    // Exclude inverters already claimed by other auto-connected pistols
+    const claimedInverters = getClaimedInvertersForPistol(pistolUid);
+
+    console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| minInvPower:', minInvPower, '| numInverters:', numInverters, '| claimed:', Array.from(claimedInverters));
+    const result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters);
     console.log('[OptimalPath] result:', result.reachable, '| segments:', result.pathSegments ? result.pathSegments.size : 0, '| inverters:', result.usedInverters);
 
     appState.optimalPathHighlight = {
