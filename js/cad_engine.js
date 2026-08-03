@@ -931,7 +931,7 @@ function drawOptimalPathOverlay(field, svg, optimalPath) {
 
     // Horizontal row segment overlays
     for (let r = 1; r < field.rows - 1; r++) {
-        const y = marginY + r * cellHeight - 4; // align with positive pole wire
+        const y = marginY + r * cellHeight; // center axis (between positive and negative wires)
         for (let c = 0; c < field.cols - 1; c++) {
             const segId = `${field.id}-wire-row-p-seg-${r}-${c}`;
             if (!optSegs.has(segId)) continue;
@@ -963,7 +963,7 @@ function drawOptimalPathOverlay(field, svg, optimalPath) {
     }
     // Vertical col segment overlays
     for (let c = 1; c < field.cols - 1; c++) {
-        const x = marginX + c * cellWidth - 4; // align with positive pole wire
+        const x = marginX + c * cellWidth; // center axis (between positive and negative wires)
         for (let r = 0; r < field.rows - 1; r++) {
             const segId = `${field.id}-wire-col-p-seg-${c}-${r}`;
             if (!optSegs.has(segId)) continue;
@@ -1313,7 +1313,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                 tP.setAttribute("x", x - 12);
                 tP.setAttribute("y", y - 10);
                 tP.setAttribute("text-anchor", "end");
-                tP.setAttribute("fill", "var(--secondary)");
+                tP.setAttribute("fill", "#ff8899"); // pastel red
                 tP.setAttribute("font-size", "9px");
                 tP.setAttribute("font-weight", "bold");
                 tP.textContent = ctc.nameP;
@@ -1324,7 +1324,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                 tN.setAttribute("x", x + 12);
                 tN.setAttribute("y", y + 15);
                 tN.setAttribute("text-anchor", "start");
-                tN.setAttribute("fill", "var(--text-muted)");
+                tN.setAttribute("fill", "#8a99ad"); // dark grey
                 tN.setAttribute("font-size", "9px");
                 tN.setAttribute("font-weight", "bold");
                 tN.textContent = ctc.nameN;

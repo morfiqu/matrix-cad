@@ -12,6 +12,8 @@ let lastValidContactors = null;
 let lastValidSelectedKeys = null;
 let lastCompClickTime = 0;
 let lastCompClickKey = null;
+let lastCtcClickTime = 0;
+let lastCtcClickKey = null;
 
 let isDrawingComponents = false;
 let activeFieldId = null;
@@ -437,6 +439,13 @@ function handleCtcMouseDown(e, fId, r, c, type, key, ctc) {
         updateCanvas();
     } else {
         if (appState.activeTool === 'select') {
+            const now = Date.now();
+            if (now - lastCtcClickTime < 300 && lastCtcClickKey === key) {
+                openPropertiesForSelected();
+                return;
+            }
+            lastCtcClickTime = now;
+            lastCtcClickKey = key;
             startGroupDrag(e, fId, r, c, 'ctc');
         }
     }
@@ -1377,6 +1386,11 @@ function generateContactorPropertySection(ctcs) {
         const ctc = item.ctc;
         const nameP = ctc.nameP || '';
         const nameN = ctc.nameN || '';
+        
+        // Strip prefixed "k" so user only edits the suffix (e.g. "10" instead of "k10")
+        const valP = nameP ? nameP.replace(/^k/i, '') : '';
+        const valN = nameN ? nameN.replace(/^k/i, '') : '';
+        
         const label = ctc.type === 'horizontal' ? "разделитель (горизонт.)" :
                       ctc.type === 'vertical' ? "разделитель (вертик.)" : "контактор";
         const cellLabel = `${label} [Строка ${item.r}, Столбец ${item.c}]`;
@@ -1387,11 +1401,17 @@ function generateContactorPropertySection(ctcs) {
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <div>
                         <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Контактор + (Положительная шина):</label>
-                        <input type="text" class="dialog-input ctc-name-p-input" value="${nameP}" placeholder="Например: k10" style="width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: bold; color: var(--text-muted);">k</span>
+                            <input type="text" class="dialog-input ctc-name-p-input" value="${valP}" placeholder="ID" style="width: 100%;">
+                        </div>
                     </div>
                     <div>
                         <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Контактор - (Отрицательная шина):</label>
-                        <input type="text" class="dialog-input ctc-name-n-input" value="${nameN}" placeholder="Например: k429" style="width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: bold; color: var(--text-muted);">k</span>
+                            <input type="text" class="dialog-input ctc-name-n-input" value="${valN}" placeholder="ID" style="width: 100%;">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1544,8 +1564,16 @@ function saveComponentRename() {
 
     for (let sec of ctcSections) {
         const gKey = sec.getAttribute('data-key');
-        const namePVal = sec.querySelector('.ctc-name-p-input').value.trim();
-        const nameNVal = sec.querySelector('.ctc-name-n-input').value.trim();
+        let namePVal = sec.querySelector('.ctc-name-p-input').value.trim();
+        let nameNVal = sec.querySelector('.ctc-name-n-input').value.trim();
+        
+        // Auto-prepend 'k' and clean duplicates
+        if (namePVal) {
+            namePVal = 'k' + namePVal.replace(/^k/i, '');
+        }
+        if (nameNVal) {
+            nameNVal = 'k' + nameNVal.replace(/^k/i, '');
+        }
         
         // Remove old names of this contactor from uniqueness map
         for (let name in proposedGlobalNames) {
