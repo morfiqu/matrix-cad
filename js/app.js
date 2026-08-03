@@ -1853,7 +1853,9 @@ window.highlightOptimalPath = function(pistolUid) {
     });
 
     const numInverters = demand > 0 ? Math.ceil(demand / minInvPower) : 1;
+    console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| minInvPower:', minInvPower, '| numInverters:', numInverters);
     const result = findOptimalPath(appState.fields, pistolUid, numInverters);
+    console.log('[OptimalPath] result:', result.reachable, '| segments:', result.pathSegments ? result.pathSegments.size : 0, '| inverters:', result.usedInverters);
 
     appState.optimalPathHighlight = {
         pistolUid,

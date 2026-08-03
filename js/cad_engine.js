@@ -11,7 +11,6 @@ const marginY = 90;
 function renderField(field, svg, simulationData, state) {
     const { activePaths, contactorPowers, pistolPowers, isSimulationMode, showPowerFlow, showFlowArrows, selectedKeys, optimalPathHighlight } = state;
 
-    
     svg.innerHTML = '';
     
     const svgWidth = marginX * 2 + field.cols * cellWidth;
@@ -26,9 +25,11 @@ function renderField(field, svg, simulationData, state) {
         drawCenteredResizeButtons(field, svg, state);
     }
     
-    drawWiring(field, svg, activePaths, state, simulationData, optimalPathHighlight);
+    drawWiring(field, svg, activePaths, state, simulationData);
     drawPlacedComponents(field, svg, simulationData, state);
     drawGridPointsAndContactors(field, svg, simulationData, state);
+    // Green overlay is drawn LAST so it appears on top of all wires and components
+    drawOptimalPathOverlay(field, svg, optimalPathHighlight);
     
     bindSVGDragSelection(field, svg, state);
 }
@@ -737,7 +738,7 @@ function hasPathBlockers(field, type, index) {
     return false;
 }
 
-function drawWiring(field, svg, activePaths, state, simulationData, optimalPath) {
+function drawWiring(field, svg, activePaths, state, simulationData) {
     const isAnim = state && state.isSimulationMode && state.showFlowArrows;
 
     if (isAnim) {
@@ -915,48 +916,74 @@ function drawWiring(field, svg, activePaths, state, simulationData, optimalPath)
             }
         }
     }
+}
 
-    // ── Green optimal-path overlay ──────────────────────────────────────────
-    if (optimalPath && optimalPath.pathSegments && optimalPath.pathSegments.size > 0) {
-        const optSegs = optimalPath.pathSegments;
-        // Draw horizontal row segments
-        for (let r = 1; r < field.rows - 1; r++) {
-            const y = marginY + r * cellHeight;
-            for (let c = 0; c < field.cols - 1; c++) {
-                const segId = `${field.id}-wire-row-p-seg-${r}-${c}`;
-                if (!optSegs.has(segId)) continue;
-                const x1 = marginX + c * cellWidth;
-                const x2 = marginX + (c + 1) * cellWidth;
-                const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                gl.setAttribute("x1", x1); gl.setAttribute("y1", y - 4);
-                gl.setAttribute("x2", x2); gl.setAttribute("y2", y - 4);
-                gl.setAttribute("stroke", "#00ff88");
-                gl.setAttribute("stroke-width", "3");
-                gl.setAttribute("stroke-linecap", "round");
-                gl.setAttribute("opacity", "0.82");
-                gl.setAttribute("pointer-events", "none");
-                svg.appendChild(gl);
-            }
+/**
+ * Draws the green optimal-path overlay on top of everything else.
+ * Called last in renderField so green lines appear above all wires and components.
+ */
+function drawOptimalPathOverlay(field, svg, optimalPath) {
+    if (!optimalPath || !optimalPath.pathSegments) return;
+    const optSegs = optimalPath.pathSegments;
+    if (!optSegs || optSegs.size === 0) return;
+
+    // Horizontal row segment overlays
+    for (let r = 1; r < field.rows - 1; r++) {
+        const y = marginY + r * cellHeight - 4; // align with P-wire
+        for (let c = 0; c < field.cols - 1; c++) {
+            const segId = `${field.id}-wire-row-p-seg-${r}-${c}`;
+            if (!optSegs.has(segId)) continue;
+            const x1 = marginX + c * cellWidth;
+            const x2 = marginX + (c + 1) * cellWidth;
+            const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            gl.setAttribute("x1", x1); gl.setAttribute("y1", y);
+            gl.setAttribute("x2", x2); gl.setAttribute("y2", y);
+            gl.setAttribute("stroke", "#00ff88");
+            gl.setAttribute("stroke-width", "4");
+            gl.setAttribute("stroke-linecap", "round");
+            gl.setAttribute("opacity", "0.9");
+            gl.setAttribute("pointer-events", "none");
+            gl.setAttribute("filter", "url(#glow-green)");
+            svg.appendChild(gl);
         }
-        // Draw vertical col segments
-        for (let c = 1; c < field.cols - 1; c++) {
-            const x = marginX + c * cellWidth;
-            for (let r = 0; r < field.rows - 1; r++) {
-                const segId = `${field.id}-wire-col-p-seg-${c}-${r}`;
-                if (!optSegs.has(segId)) continue;
-                const y1 = marginY + r * cellHeight;
-                const y2 = marginY + (r + 1) * cellHeight;
-                const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                gl.setAttribute("x1", x - 4); gl.setAttribute("y1", y1);
-                gl.setAttribute("x2", x - 4); gl.setAttribute("y2", y2);
-                gl.setAttribute("stroke", "#00ff88");
-                gl.setAttribute("stroke-width", "3");
-                gl.setAttribute("stroke-linecap", "round");
-                gl.setAttribute("opacity", "0.82");
-                gl.setAttribute("pointer-events", "none");
-                svg.appendChild(gl);
-            }
+    }
+    // Vertical col segment overlays
+    for (let c = 1; c < field.cols - 1; c++) {
+        const x = marginX + c * cellWidth - 4; // align with P-wire
+        for (let r = 0; r < field.rows - 1; r++) {
+            const segId = `${field.id}-wire-col-p-seg-${c}-${r}`;
+            if (!optSegs.has(segId)) continue;
+            const y1 = marginY + r * cellHeight;
+            const y2 = marginY + (r + 1) * cellHeight;
+            const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            gl.setAttribute("x1", x); gl.setAttribute("y1", y1);
+            gl.setAttribute("x2", x); gl.setAttribute("y2", y2);
+            gl.setAttribute("stroke", "#00ff88");
+            gl.setAttribute("stroke-width", "4");
+            gl.setAttribute("stroke-linecap", "round");
+            gl.setAttribute("opacity", "0.9");
+            gl.setAttribute("pointer-events", "none");
+            gl.setAttribute("filter", "url(#glow-green)");
+            svg.appendChild(gl);
         }
+    }
+
+    // Ensure glow filter exists
+    let defs = svg.querySelector('defs');
+    if (!defs) {
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        svg.insertBefore(defs, svg.firstChild);
+    }
+    if (!defs.querySelector('#glow-green')) {
+        defs.innerHTML += `
+            <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+                <feMerge>
+                    <feMergeNode in="blur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        `;
     }
 }
 
