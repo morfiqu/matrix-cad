@@ -766,17 +766,15 @@ function calculateSimulation(fields) {
  *
  * @param {Array} fields - All field objects
  * @param {string} pistolUid - Pistol unique ID: "{fieldId}-{r}-{c}"
- * @param {number} numInverters - How many inverters we need
- * @returns {{ pathSegments: Set<string>, usedInverters: Array, reachable: boolean }}
  */
-function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = null, allowedInverters = null) {
+function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = null, allowedInverters = null, claimedBuses = null) {
     const parts = pistolUid.split('-');
     const pistolFieldId = parseInt(parts[0]);
     const pistolR = parseInt(parts[1]);
     const pistolC = parseInt(parts[2]);
 
     const pistolField = fields.find(f => f.id === pistolFieldId);
-    if (!pistolField) return { pathSegments: new Set(), usedInverters: [], usedContactors: [], reachable: false };
+    if (!pistolField) return { pathSegments: new Set(), usedInverters: [], usedContactors: [], usedBuses: new Set(), reachable: false };
 
     const foundInverters = []; // { uid, name, power, segments, breakers, transitions, hops }
     const visitedNodes = new Set();
@@ -802,6 +800,20 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
         const current = queue.shift();
         const nodeKey = `${current.fieldId}-${current.type}-${current.r}-${current.c}`;
         if (visitedNodes.has(nodeKey)) continue;
+
+        // Exclude nodes on claimed/occupied buses (except for the target pistol's own starting column)
+        if (claimedBuses) {
+            const isTargetPistolCol = (current.fieldId === pistolFieldId && current.c === pistolC && current.type === 'col');
+            if (!isTargetPistolCol) {
+                if (current.type === 'row' && claimedBuses.has(`${current.fieldId}-row-${current.r}`)) {
+                    continue;
+                }
+                if (current.type === 'col' && claimedBuses.has(`${current.fieldId}-col-${current.c}`)) {
+                    continue;
+                }
+            }
+        }
+
         visitedNodes.add(nodeKey);
 
         const f = fields.find(x => x.id === current.fieldId);
@@ -970,7 +982,7 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
     }
 
     if (foundInverters.length === 0) {
-        return { pathSegments: new Set(), usedInverters: [], usedContactors: [], reachable: false };
+        return { pathSegments: new Set(), usedInverters: [], usedContactors: [], usedBuses: new Set(), reachable: false };
     }
 
     // Sort by path length (fewest hops = closest inverter)
@@ -992,10 +1004,34 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
         });
     });
 
+    const usedBuses = new Set();
+    // Add pistol col
+    usedBuses.add(`${pistolFieldId}-col-${pistolC}`);
+    
+    // Add inverter rows
+    selected.forEach(inv => {
+        const invParts = inv.uid.split('-');
+        usedBuses.add(`${invParts[0]}-row-${invParts[1]}`);
+    });
+    
+    // Add segments
+    pathSegments.forEach(segId => {
+        const parts = segId.split('-');
+        const fId = parts[0];
+        if (segId.includes('-row-')) {
+            const r = parts[parts.length - 2];
+            usedBuses.add(`${fId}-row-${r}`);
+        } else if (segId.includes('-col-')) {
+            const c = parts[parts.length - 2];
+            usedBuses.add(`${fId}-col-${c}`);
+        }
+    });
+
     return {
         pathSegments,
         usedInverters: selected.map(inv => ({ uid: inv.uid, name: inv.name, power: inv.power })),
         usedContactors,
+        usedBuses,
         reachable: selected.length >= numInverters
     };
 }
