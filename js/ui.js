@@ -145,7 +145,11 @@ function doSaveToFile(fields) {
     const totalContactorsReal = (countContactors + countBreakers) * 2;
     const filename = `matrix_${totalPower}kW_${countInverters}inv_${countPistols}pst_${totalContactorsReal}ctc.txt`;
     
-    const data = { fields: fields };
+    const data = {
+        fields: fields,
+        inverterSettings: window.appState ? window.appState.inverterSettings : {},
+        pistolDemands: window.appState ? window.appState.pistolDemands : {}
+    };
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -170,6 +174,8 @@ function doLoadFromFile(event, state, updateCanvasCallback) {
             const loadedFields = Array.isArray(data) ? data : (data.fields || null);
             if (loadedFields && loadedFields.length > 0) {
                 state.fields = loadedFields;
+                state.inverterSettings = data.inverterSettings || {};
+                state.pistolDemands = data.pistolDemands || {};
                 state.activeTool = 'select';
                 if (state.selectedKeys) state.selectedKeys.clear();
                 state.historyStack = [];

@@ -1227,7 +1227,8 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
 
             if (isSimulationMode && showPowerFlow && ctc.closed && !isAir) {
                 const ctcKey = `${field.id}-ctc-${key}`;
-                const pwr = contactorPowers[ctcKey] || 0;
+                const currents = simulationData.contactorCurrents || {};
+                const amps = currents[ctcKey] || 0;
                 const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 pTxt.setAttribute("x", x);
                 pTxt.setAttribute("y", y - 11);
@@ -1236,7 +1237,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                 pTxt.setAttribute("font-size", "10px");
                 pTxt.setAttribute("font-weight", "bold");
                 pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
-                pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
+                pTxt.textContent = `${Math.round(amps * 10) / 10} А`;
                 svg.appendChild(pTxt);
             }
         } else if (ctc.type === 'horizontal' || ctc.type === 'vertical') {
@@ -1282,7 +1283,8 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
 
             if (isSimulationMode && showPowerFlow && ctc.closed && !isAir) {
                 const ctcKey = `${field.id}-ctc-${key}`;
-                const pwr = contactorPowers[ctcKey] || 0;
+                const currents = simulationData.contactorCurrents || {};
+                const amps = currents[ctcKey] || 0;
                 const pTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 if (ctc.type === 'horizontal') {
                     pTxt.setAttribute("x", x);
@@ -1297,7 +1299,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                 pTxt.setAttribute("font-size", "10px");
                 pTxt.setAttribute("font-weight", "bold");
                 pTxt.setAttribute("style", "text-shadow: 0 0 3px #000, 0 0 5px #000; pointer-events: none;");
-                pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
+                pTxt.textContent = `${Math.round(amps * 10) / 10} А`;
                 svg.appendChild(pTxt);
             }
         }

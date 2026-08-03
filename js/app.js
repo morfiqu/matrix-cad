@@ -1936,7 +1936,10 @@ function renderInverterSimulationTable(simulationData) {
             const current = settings.current;
             
             const isActive = simulationData.invReachesPistol && simulationData.invReachesPistol.has(uid);
-            const realPower = isActive ? ((voltage * current) / 1000) : 0;
+            // Real power shows load-based draw when connected, or 0 when disconnected
+            const realPower = (isActive && simulationData.inverterRealPowers) 
+                ? (simulationData.inverterRealPowers[uid] || 0) 
+                : 0;
             const maxI = voltage > 0 ? (maxPower * 1000 / voltage) : 0;
 
             const tr = document.createElement('tr');
@@ -2025,7 +2028,6 @@ function renderInverterSimulationTable(simulationData) {
  * Preserves existing input values (pistolDemands) between re-renders.
  */
 function renderPistolDemandTable(simulationData) {
-    // Find/create wrapper inside #sidebar-pistol-outputs
     const outputsPanel = document.getElementById('sidebar-pistol-outputs');
     if (!outputsPanel) return;
 
@@ -2034,20 +2036,21 @@ function renderPistolDemandTable(simulationData) {
         wrap = document.createElement('div');
         wrap.id = 'pistol-demand-wrap';
         wrap.innerHTML = `
-            <div class="section-title">📋 Заявка мощности</div>
-            <table id="pistol-demand-table">
+            <div class="section-title" style="margin-top: 15px; margin-bottom: 8px;">📋 Заявка мощности пистолетов</div>
+            <table id="pistol-demand-table" style="width:100%; border-collapse:collapse; font-size:11px;">
                 <thead>
-                    <tr>
-                        <th>Пистолет</th>
-                        <th>Заявка, кВт</th>
-                        <th style="text-align:center;">Инв.</th>
+                    <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); height:26px;">
+                        <th style="text-align:left; padding:4px;">Пистолет</th>
+                        <th style="text-align:center; padding:4px;">U, В</th>
+                        <th style="text-align:center; padding:4px;">I, А</th>
+                        <th style="text-align:center; padding:4px;">Р, кВт</th>
+                        <th style="text-align:center; padding:4px;">Инв.</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody id="pistol-demand-tbody"></tbody>
             </table>
         `;
-        // Insert before routing-summary div
         const routingSummary = document.getElementById('routing-summary');
         if (routingSummary) {
             outputsPanel.insertBefore(wrap, routingSummary);
@@ -2067,9 +2070,9 @@ function renderPistolDemandTable(simulationData) {
         for (let k in f.components) {
             const c = f.components[k];
             if (c.type === 'inverter') {
-                const p = c.power !== undefined ? c.power : 60;
+                const p = getInverterPower(c, f.id, k);
                 totalInvPower += p;
-                if (p < minInvPower) minInvPower = p;
+                if (p < minInvPower && p > 0) minInvPower = p;
             }
         }
     });
@@ -2082,10 +2085,22 @@ function renderPistolDemandTable(simulationData) {
 
             pistolCount++;
             const uid = `${field.id}-${key}`;
-            const currentDemand = appState.pistolDemands[uid] || '';
-            const demandNum = parseFloat(currentDemand) || 0;
-            const invCount = demandNum > 0 ? Math.ceil(demandNum / minInvPower) : '—';
             
+            // Migrate legacy demands or initialize
+            if (!appState.pistolDemands[uid] || typeof appState.pistolDemands[uid] !== 'object') {
+                const legacyVal = parseFloat(appState.pistolDemands[uid]) || 10;
+                appState.pistolDemands[uid] = {
+                    voltage: 500,
+                    current: (legacyVal * 1000) / 500
+                };
+            }
+            
+            const settings = appState.pistolDemands[uid];
+            const voltage = settings.voltage;
+            const current = settings.current;
+            const demandNum = (voltage * current) / 1000;
+            
+            const invCount = demandNum > 0 ? Math.ceil(demandNum / minInvPower) : '—';
             const isPowerExcess = demandNum > totalInvPower;
 
             const isHighlighted = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid;
@@ -2093,29 +2108,26 @@ function renderPistolDemandTable(simulationData) {
                 ? appState.optimalPathHighlight
                 : null;
 
-            // Main row
             const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+            tr.style.height = '32px';
+            
             tr.innerHTML = `
-                <td class="demand-name-cell" title="${comp.name}">${comp.name}</td>
-                <td>
-                    <input
-                        type="number"
-                        class="demand-input ${isPowerExcess ? 'power-excess-warning' : ''}"
-                        min="0"
-                        step="1"
-                        value="${currentDemand}"
-                        data-uid="${uid}"
-                        placeholder="кВт"
-                        style="${isPowerExcess ? 'border-color: var(--danger); background: rgba(255, 74, 107, 0.08);' : ''}"
-                        title="${isPowerExcess ? `Превышает общую мощность инверторов (${totalInvPower} кВт)` : ''}"
-                    >
+                <td class="demand-name-cell" title="${comp.name}" style="padding:4px; font-weight:bold; color:var(--text-main); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${comp.name}</td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:45px;">
                 </td>
-                <td class="demand-count-cell" style="${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
-                <td>
+                <td style="text-align:center; padding:4px;">
+                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:45px;">
+                </td>
+                <td class="power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isPowerExcess ? 'var(--danger)' : 'var(--text-main)'};">${Math.round(demandNum * 10) / 10}</td>
+                <td class="demand-count-cell" style="text-align:center; padding:4px; ${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
+                <td style="text-align:center; padding:4px;">
                     <button
                         class="demand-find-btn ${isHighlighted ? (lastResult && lastResult.reachable ? 'active' : 'unreachable') : ''}"
                         data-uid="${uid}"
                         title="${isHighlighted ? 'Скрыть маршрут' : 'Найти оптимальный маршрут'}"
+                        style="padding: 2px 6px; font-size: 11px;"
                     >${isHighlighted ? (lastResult && lastResult.reachable ? '✅' : '❌') : '🔍'}</button>
                 </td>
             `;
@@ -2128,52 +2140,68 @@ function renderPistolDemandTable(simulationData) {
             
             let infoText = '';
             if (isPowerExcess) {
-                infoText = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${totalInvPower} кВт)</span>`;
+                infoText = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${Math.round(totalInvPower * 10) / 10} кВт)</span>`;
             } else if (isHighlighted && lastResult && lastResult.reachable) {
                 infoText = 'Инверторы: ' + lastResult.usedInverters.map(i => i.name).join(', ');
             } else if (isHighlighted && lastResult && !lastResult.reachable) {
                 infoText = '<span style="color: var(--danger)">⚠️ Маршрут не найден</span>';
             }
             
-            infoTr.innerHTML = `<td colspan="4" class="demand-info-cell">${infoText}</td>`;
+            infoTr.innerHTML = `<td colspan="6" class="demand-info-cell" style="padding:4px; font-size:10px; color:var(--text-muted);">${infoText}</td>`;
             tbody.appendChild(infoTr);
 
-            // Bind demand input
-            const input = tr.querySelector('.demand-input');
-            input.addEventListener('input', function() {
-                appState.pistolDemands[this.dataset.uid] = this.value;
-                const val = parseFloat(this.value) || 0;
+            // Event bindings
+            const uInput = tr.querySelector('.u-input');
+            const iInput = tr.querySelector('.i-input');
+            const powerCell = tr.querySelector('.power-cell');
+            const cntCell = tr.querySelector('.demand-count-cell');
+            const infoCell = infoTr.querySelector('.demand-info-cell');
+
+            const recalculateRow = () => {
+                let v = parseFloat(uInput.value) || 0;
+                if (v !== 0) {
+                    if (v < 200) v = 200;
+                    if (v > 1000) v = 1000;
+                }
+                uInput.value = v;
+                appState.pistolDemands[uid].voltage = v;
+
+                let curI = parseFloat(iInput.value) || 0;
+                if (curI < 0) curI = 0;
+                iInput.value = Math.round(curI * 10) / 10;
+                appState.pistolDemands[uid].current = curI;
+
+                const newDemand = (v * curI) / 1000;
+                powerCell.textContent = Math.round(newDemand * 10) / 10;
+
+                const excess = newDemand > totalInvPower;
+                const cnt = newDemand > 0 ? Math.ceil(newDemand / minInvPower) : '—';
                 
-                // Recalculate warning on fly
-                const excess = val > totalInvPower;
-                const cnt = val > 0 ? Math.ceil(val / minInvPower) : '—';
-                
-                const cntCell = tr.querySelector('.demand-count-cell');
                 cntCell.textContent = cnt;
-                cntCell.style.color = excess ? 'var(--danger)' : 'var(--secondary)';
-                
+                cntCell.style.color = excess ? 'var(--danger)' : '';
+                powerCell.style.color = excess ? 'var(--danger)' : '';
+
                 if (excess) {
-                    this.style.borderColor = 'var(--danger)';
-                    this.style.background = 'rgba(255, 74, 107, 0.08)';
-                    this.title = `Превышает общую мощность инверторов (${totalInvPower} кВт)`;
+                    infoTr.classList.add('visible');
+                    infoCell.innerHTML = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${Math.round(totalInvPower * 10) / 10} кВт)</span>`;
+                } else if (!isHighlighted) {
+                    infoTr.classList.remove('visible');
+                    infoCell.innerHTML = '';
+                }
+
+                // If this pistol is highlighted, recalculate path
+                if (isHighlighted) {
+                    window.highlightOptimalPath(uid); // toggle off
+                    window.highlightOptimalPath(uid); // toggle back on with new values
                 } else {
-                    this.style.borderColor = 'var(--border)';
-                    this.style.background = 'rgba(255,255,255,0.06)';
-                    this.title = '';
+                    updateCanvas();
                 }
-                
-                // Refresh info row on fly if not highlighted
-                if (!isHighlighted) {
-                    const infoCell = infoTr.querySelector('.demand-info-cell');
-                    if (excess) {
-                        infoTr.classList.add('visible');
-                        infoCell.innerHTML = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${totalInvPower} кВт)</span>`;
-                    } else {
-                        infoTr.classList.remove('visible');
-                        infoCell.innerHTML = '';
-                    }
-                }
-            });
+            };
+
+            uInput.addEventListener('change', recalculateRow);
+            uInput.addEventListener('blur', recalculateRow);
+            iInput.addEventListener('change', recalculateRow);
+            iInput.addEventListener('blur', recalculateRow);
 
             // Bind find button
             const findBtn = tr.querySelector('.demand-find-btn');
@@ -2185,11 +2213,10 @@ function renderPistolDemandTable(simulationData) {
 
     if (pistolCount === 0) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
+        tr.innerHTML = `<td colspan="6" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
         tbody.appendChild(tr);
     }
 }
-
 
 /**
  * Toggle highlight of the optimal path to a pistol.
@@ -2203,7 +2230,10 @@ window.highlightOptimalPath = function(pistolUid) {
         return;
     }
 
-    const demand = parseFloat(appState.pistolDemands[pistolUid]) || 0;
+    const settings = appState.pistolDemands[pistolUid];
+    const u = (settings && settings.voltage !== undefined) ? settings.voltage : 500;
+    const i = (settings && settings.current !== undefined) ? settings.current : 20;
+    const demand = (u * i) / 1000;
 
     // Collect min inverter power
     let minInvPower = 60;
@@ -2211,8 +2241,8 @@ window.highlightOptimalPath = function(pistolUid) {
         for (let k in f.components) {
             const c = f.components[k];
             if (c.type === 'inverter') {
-                const p = c.power !== undefined ? c.power : 60;
-                if (p < minInvPower) minInvPower = p;
+                const p = getInverterPower(c, f.id, k);
+                if (p < minInvPower && p > 0) minInvPower = p;
             }
         }
     });
