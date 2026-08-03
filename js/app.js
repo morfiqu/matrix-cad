@@ -2011,7 +2011,12 @@ function applyAutoConnections() {
     const claimedBuses = new Set();
     
     // Sort pistols based on their order in autoConnectOrder (FIFO priority for path stability)
+    // BUT put lastModifiedPistolUid at the very end of the array, so that any new or changed request
+    // acts as the last action and does not disconnect/override already-running stable lines!
     autoPistols.sort((a, b) => {
+        if (a.uid === appState.lastModifiedPistolUid && b.uid !== appState.lastModifiedPistolUid) return 1;
+        if (b.uid === appState.lastModifiedPistolUid && a.uid !== appState.lastModifiedPistolUid) return -1;
+        
         const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
         const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
         if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
@@ -2345,6 +2350,7 @@ function renderPistolDemandTable(simulationData) {
             const autoCheckbox = tr.querySelector('.auto-connect-checkbox');
 
             const recalculateRow = () => {
+                appState.lastModifiedPistolUid = uid;
                 let v = parseFloat(uInput.value) || 0;
                 if (v !== 0) {
                     if (v < 200) v = 200;
@@ -2391,6 +2397,7 @@ function renderPistolDemandTable(simulationData) {
             iInput.addEventListener('blur', recalculateRow);
             
             autoCheckbox.addEventListener('change', function() {
+                appState.lastModifiedPistolUid = uid;
                 appState.pistolDemands[uid].autoConnect = this.checked;
                 if (!appState.autoConnectOrder) {
                     appState.autoConnectOrder = [];

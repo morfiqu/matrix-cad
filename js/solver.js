@@ -5,18 +5,10 @@
  */
 
 /**
- * Helper to get the actual inverter power dynamically based on user manual V/I inputs.
+ * Helper to get the nominal inverter power capacity.
  */
 function getInverterPower(comp, fieldId, key) {
-    const defaultMaxPower = comp.power !== undefined ? comp.power : 60;
-    const uid = `${fieldId}-${key}`;
-    if (window.appState && window.appState.inverterSettings && window.appState.inverterSettings[uid]) {
-        const s = window.appState.inverterSettings[uid];
-        const v = s.voltage !== undefined ? s.voltage : 500;
-        const i = s.current !== undefined ? s.current : (defaultMaxPower * 1000 / 500);
-        return (v * i) / 1000;
-    }
-    return defaultMaxPower;
+    return comp.power !== undefined ? comp.power : 60;
 }
 
 function getInverterVoltage(fields, fId, r) {
