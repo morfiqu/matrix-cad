@@ -769,7 +769,7 @@ function calculateSimulation(fields) {
  * @param {number} numInverters - How many inverters we need
  * @returns {{ pathSegments: Set<string>, usedInverters: Array, reachable: boolean }}
  */
-function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = null) {
+function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = null, allowedInverters = null) {
     const parts = pistolUid.split('-');
     const pistolFieldId = parseInt(parts[0]);
     const pistolR = parseInt(parts[1]);
@@ -835,6 +835,9 @@ function findOptimalPath(fields, pistolUid, numInverters, claimedInverters = nul
             const invUid = `${current.fieldId}-${cKey}`;
             if (claimedInverters && claimedInverters.has(invUid)) {
                 continue; // Exclude claimed inverters
+            }
+            if (allowedInverters && !allowedInverters.has(invUid)) {
+                continue; // Exclude inverters not in allowed/affinity list
             }
             foundInverters.push({
                 uid: invUid,

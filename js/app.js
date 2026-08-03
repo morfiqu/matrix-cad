@@ -2031,6 +2031,10 @@ function applyAutoConnections() {
         }
     });
 
+    if (!appState.pistolToInverterAffinity) {
+        appState.pistolToInverterAffinity = {};
+    }
+
     autoPistols.forEach(p => {
         const settings = appState.pistolDemands[p.uid];
         const u = settings.voltage || 0;
@@ -2041,14 +2045,37 @@ function applyAutoConnections() {
         
         const numInverters = Math.ceil(demand / minInvPower);
         
-        // Find path excluding claimed inverters
-        const result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters);
+        // 1. Try to find path using ONLY previously connected (affinity) inverters
+        let result = null;
+        const affinityInvs = appState.pistolToInverterAffinity[p.uid];
+        if (affinityInvs && affinityInvs.length > 0) {
+            const allowed = new Set(affinityInvs);
+            // Verify all allowed inverters are actually still unclaimed
+            let allUnclaimed = true;
+            allowed.forEach(invUid => {
+                if (claimedInverters.has(invUid)) {
+                    allUnclaimed = false;
+                }
+            });
+            
+            if (allUnclaimed) {
+                result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters, allowed);
+            }
+        }
+        
+        // 2. If no path found (or no affinity yet), search among all available inverters
+        if (!result || !result.reachable) {
+            result = findOptimalPath(appState.fields, p.uid, numInverters, claimedInverters);
+        }
         
         if (result.reachable) {
             // Claim the inverters used
             result.usedInverters.forEach(inv => {
                 claimedInverters.add(inv.uid);
             });
+
+            // Update affinity to the newly connected inverters!
+            appState.pistolToInverterAffinity[p.uid] = result.usedInverters.map(inv => inv.uid);
             
             // Close all contactors along the path and add to autoClosedContactors list
             result.usedContactors.forEach(ctcKey => {
@@ -2067,6 +2094,9 @@ function applyAutoConnections() {
                     }
                 }
             });
+        } else {
+            // If unreachable, clear its affinity
+            delete appState.pistolToInverterAffinity[p.uid];
         }
     });
 }
@@ -2375,7 +2405,22 @@ function getClaimedInvertersForPistol(targetPistolUid) {
         if (demand <= 0) return;
         
         const numInverters = Math.ceil(demand / minInvPower);
-        const result = findOptimalPath(appState.fields, p.uid, numInverters, claimed);
+        
+        let result = null;
+        const affinityInvs = appState.pistolToInverterAffinity ? appState.pistolToInverterAffinity[p.uid] : null;
+        if (affinityInvs && affinityInvs.length > 0) {
+            const allowed = new Set(affinityInvs);
+            let allUnclaimed = true;
+            allowed.forEach(invUid => {
+                if (claimed.has(invUid)) allUnclaimed = false;
+            });
+            if (allUnclaimed) {
+                result = findOptimalPath(appState.fields, p.uid, numInverters, claimed, allowed);
+            }
+        }
+        if (!result || !result.reachable) {
+            result = findOptimalPath(appState.fields, p.uid, numInverters, claimed);
+        }
         
         if (result.reachable) {
             result.usedInverters.forEach(inv => {
@@ -2421,8 +2466,23 @@ window.highlightOptimalPath = function(pistolUid) {
     // Exclude inverters already claimed by other auto-connected pistols
     const claimedInverters = getClaimedInvertersForPistol(pistolUid);
 
+    let result = null;
+    const affinityInvs = appState.pistolToInverterAffinity ? appState.pistolToInverterAffinity[pistolUid] : null;
+    if (affinityInvs && affinityInvs.length > 0) {
+        const allowed = new Set(affinityInvs);
+        let allUnclaimed = true;
+        allowed.forEach(invUid => {
+            if (claimedInverters.has(invUid)) allUnclaimed = false;
+        });
+        if (allUnclaimed) {
+            result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters, allowed);
+        }
+    }
+    if (!result || !result.reachable) {
+        result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters);
+    }
+
     console.log('[OptimalPath] pistolUid:', pistolUid, '| demand:', demand, '| minInvPower:', minInvPower, '| numInverters:', numInverters, '| claimed:', Array.from(claimedInverters));
-    const result = findOptimalPath(appState.fields, pistolUid, numInverters, claimedInverters);
     console.log('[OptimalPath] result:', result.reachable, '| segments:', result.pathSegments ? result.pathSegments.size : 0, '| inverters:', result.usedInverters);
 
     appState.optimalPathHighlight = {
