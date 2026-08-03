@@ -744,6 +744,14 @@ function calculateSimulation(fields) {
         }
     });
 
+    if (window.appState && window.appState.routingErrors) {
+        window.appState.routingErrors.forEach(err => {
+            if (!errorMessages.includes(err)) {
+                errorMessages.push(err);
+            }
+        });
+    }
+
     return {
         activePaths,
         contactorPowers,
