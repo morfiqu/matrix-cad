@@ -5,6 +5,40 @@
 
 const MAX_HISTORY = 50;
 
+// Hijack console for visual debug log
+(function() {
+    const origLog = console.log;
+    const origErr = console.error;
+    
+    function logToScreen(args, isErr = false) {
+        const consoleDiv = document.getElementById('debug-log-console');
+        if (consoleDiv) {
+            const msg = Array.from(args).map(arg => {
+                if (arg instanceof Set) return 'Set(' + Array.from(arg).join(', ') + ')';
+                if (typeof arg === 'object') return JSON.stringify(arg);
+                return String(arg);
+            }).join(' ');
+            
+            const line = document.createElement('div');
+            if (isErr) line.style.color = '#ff4a6b';
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+    }
+    
+    console.log = function() {
+        origLog.apply(console, arguments);
+        logToScreen(arguments, false);
+    };
+    
+    console.error = function() {
+        origErr.apply(console, arguments);
+        logToScreen(arguments, true);
+    };
+})();
+
+
 function createInitialState() {
     return {
         fields: [
