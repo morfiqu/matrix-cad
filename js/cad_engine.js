@@ -920,70 +920,78 @@ function drawWiring(field, svg, activePaths, state, simulationData) {
 
 /**
  * Draws the green optimal-path overlay on top of everything else.
- * Called last in renderField so green lines appear above all wires and components.
+ * Uses a double-line glow rendering technique that avoids SVG filter issues.
  */
 function drawOptimalPathOverlay(field, svg, optimalPath) {
     if (!optimalPath || !optimalPath.pathSegments) return;
     const optSegs = optimalPath.pathSegments;
     if (!optSegs || optSegs.size === 0) return;
 
+    console.log('[drawOptimalPathOverlay] rendering', optSegs.size, 'segments');
+
     // Horizontal row segment overlays
     for (let r = 1; r < field.rows - 1; r++) {
-        const y = marginY + r * cellHeight - 4; // align with P-wire
+        const y = marginY + r * cellHeight - 4; // align with positive pole wire
         for (let c = 0; c < field.cols - 1; c++) {
             const segId = `${field.id}-wire-row-p-seg-${r}-${c}`;
             if (!optSegs.has(segId)) continue;
             const x1 = marginX + c * cellWidth;
             const x2 = marginX + (c + 1) * cellWidth;
-            const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            gl.setAttribute("x1", x1); gl.setAttribute("y1", y);
-            gl.setAttribute("x2", x2); gl.setAttribute("y2", y);
-            gl.setAttribute("stroke", "#00ff88");
-            gl.setAttribute("stroke-width", "4");
-            gl.setAttribute("stroke-linecap", "round");
-            gl.setAttribute("opacity", "0.9");
-            gl.setAttribute("pointer-events", "none");
-            gl.setAttribute("filter", "url(#glow-green)");
-            svg.appendChild(gl);
+
+            // 1. Draw thick background glow line
+            const bg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            bg.setAttribute("x1", x1); bg.setAttribute("y1", y);
+            bg.setAttribute("x2", x2); bg.setAttribute("y2", y);
+            bg.setAttribute("stroke", "#00ff88");
+            bg.setAttribute("stroke-width", "8");
+            bg.setAttribute("stroke-linecap", "round");
+            bg.setAttribute("opacity", "0.28");
+            bg.setAttribute("pointer-events", "none");
+            svg.appendChild(bg);
+
+            // 2. Draw thin foreground bright line
+            const fg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            fg.setAttribute("x1", x1); fg.setAttribute("y1", y);
+            fg.setAttribute("x2", x2); fg.setAttribute("y2", y);
+            fg.setAttribute("stroke", "#00ff88");
+            fg.setAttribute("stroke-width", "3.5");
+            fg.setAttribute("stroke-linecap", "round");
+            fg.setAttribute("opacity", "0.95");
+            fg.setAttribute("pointer-events", "none");
+            svg.appendChild(fg);
         }
     }
     // Vertical col segment overlays
     for (let c = 1; c < field.cols - 1; c++) {
-        const x = marginX + c * cellWidth - 4; // align with P-wire
+        const x = marginX + c * cellWidth - 4; // align with positive pole wire
         for (let r = 0; r < field.rows - 1; r++) {
             const segId = `${field.id}-wire-col-p-seg-${c}-${r}`;
             if (!optSegs.has(segId)) continue;
             const y1 = marginY + r * cellHeight;
             const y2 = marginY + (r + 1) * cellHeight;
-            const gl = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            gl.setAttribute("x1", x); gl.setAttribute("y1", y1);
-            gl.setAttribute("x2", x); gl.setAttribute("y2", y2);
-            gl.setAttribute("stroke", "#00ff88");
-            gl.setAttribute("stroke-width", "4");
-            gl.setAttribute("stroke-linecap", "round");
-            gl.setAttribute("opacity", "0.9");
-            gl.setAttribute("pointer-events", "none");
-            gl.setAttribute("filter", "url(#glow-green)");
-            svg.appendChild(gl);
-        }
-    }
 
-    // Ensure glow filter exists
-    let defs = svg.querySelector('defs');
-    if (!defs) {
-        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        svg.insertBefore(defs, svg.firstChild);
-    }
-    if (!defs.querySelector('#glow-green')) {
-        defs.innerHTML += `
-            <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
-                <feMerge>
-                    <feMergeNode in="blur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-            </filter>
-        `;
+            // 1. Draw thick background glow line
+            const bg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            bg.setAttribute("x1", x); bg.setAttribute("y1", y1);
+            bg.setAttribute("x2", x); bg.setAttribute("y2", y2);
+            bg.setAttribute("stroke", "#00ff88");
+            bg.setAttribute("stroke-width", "8");
+            bg.setAttribute("stroke-linecap", "round");
+            bg.setAttribute("opacity", "0.28");
+            bg.setAttribute("pointer-events", "none");
+            svg.appendChild(bg);
+
+            // 2. Draw thin foreground bright line
+            const fg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            fg.setAttribute("x1", x); fg.setAttribute("y1", y1);
+            fg.setAttribute("x2", x); fg.setAttribute("y2", y2);
+            fg.setAttribute("stroke", "#00ff88");
+            fg.setAttribute("stroke-width", "3.5");
+            fg.setAttribute("stroke-linecap", "round");
+            fg.setAttribute("opacity", "0.95");
+            fg.setAttribute("pointer-events", "none");
+            svg.appendChild(fg);
+        }
     }
 }
 
@@ -1130,8 +1138,13 @@ function drawPlacedComponents(field, svg, simulationData, state) {
 
 function drawGridPointsAndContactors(field, svg, simulationData, state) {
     const { contactorPowers } = simulationData;
-    const { isSimulationMode, showPowerFlow, selectedKeys, onCtcMouseDown, onCtcContextMenu } = state;
+    const { isSimulationMode, showPowerFlow, selectedKeys, onCtcMouseDown, onCtcContextMenu, onCtcDblClick } = state;
     
+    // Check duplicates globally
+    const duplicateCtcNames = typeof getContactorNameDuplicates === 'function' && window.appState
+        ? getContactorNameDuplicates(window.appState.fields)
+        : new Set();
+
     for (let key in field.contactors) {
         const parts = key.split('-');
         const r = parseInt(parts[0]);
@@ -1171,6 +1184,11 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             isAir = !hasColWire;
         }
 
+        const hasNameDuplicate = (ctc.nameP && duplicateCtcNames.has(ctc.nameP.trim().toLowerCase())) ||
+                                 (ctc.nameN && duplicateCtcNames.has(ctc.nameN.trim().toLowerCase()));
+
+        const hasError = isAir || hasNameDuplicate;
+
         if (!ctc.type || ctc.type === 'standard') {
             const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
             circle.setAttribute("cx", x);
@@ -1178,7 +1196,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             circle.setAttribute("r", 8);
             
             let ctcClass = `ctc-circle ${isCtcSel ? 'selected' : ''}`;
-            if (isAir) {
+            if (hasError) {
                 ctcClass += " duplicate-error";
             }
             circle.setAttribute("class", ctcClass);
@@ -1188,7 +1206,7 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             if (isClosed) {
                 circle.setAttribute("filter", "drop-shadow(0 0 6px var(--primary))");
             }
-            if (isAir) {
+            if (hasError) {
                 circle.setAttribute("stroke", "#ff4a6b");
                 circle.setAttribute("stroke-width", "2");
             }
@@ -1199,6 +1217,10 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
 
             circle.oncontextmenu = (e) => {
                 if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
+            };
+
+            circle.ondblclick = (e) => {
+                if (onCtcDblClick) onCtcDblClick(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
             };
 
             svg.appendChild(circle);
@@ -1233,14 +1255,14 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
             }
             
             let breakerClass = isCtcSel ? "selected" : "";
-            if (isAir) {
+            if (hasError) {
                 breakerClass += " duplicate-error";
             }
             rect.setAttribute("class", breakerClass);
             
             rect.setAttribute("rx", 2);
-            rect.setAttribute("stroke", isAir ? "#ff4a6b" : "#000");
-            rect.setAttribute("stroke-width", isAir ? "2" : "1");
+            rect.setAttribute("stroke", hasError ? "#ff4a6b" : "#000");
+            rect.setAttribute("stroke-width", hasError ? "2" : "1");
             rect.setAttribute("fill", (isSimulationMode && ctc.closed) ? "var(--primary)" : "#ff4a6b");
             rect.setAttribute("cursor", "pointer");
             
@@ -1250,6 +1272,10 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
 
             rect.oncontextmenu = (e) => {
                 if (onCtcContextMenu) onCtcContextMenu(e, field.id, r, c, 'ctc', ctcSelectionKey);
+            };
+
+            rect.ondblclick = (e) => {
+                if (onCtcDblClick) onCtcDblClick(e, field.id, r, c, 'ctc', ctcSelectionKey, ctc);
             };
 
             svg.appendChild(rect);
@@ -1274,6 +1300,37 @@ function drawGridPointsAndContactors(field, svg, simulationData, state) {
                 pTxt.textContent = `${Math.round(pwr * 10) / 10} кВт`;
                 svg.appendChild(pTxt);
             }
+        }
+
+        // Draw User-Defined Names (nameP and nameN)
+        if (ctc.nameP || ctc.nameN) {
+            const txtGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            txtGroup.setAttribute("class", "ctc-names-group");
+            txtGroup.setAttribute("style", "pointer-events: none;");
+            
+            if (ctc.nameP) {
+                const tP = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                tP.setAttribute("x", x - 12);
+                tP.setAttribute("y", y - 10);
+                tP.setAttribute("text-anchor", "end");
+                tP.setAttribute("fill", "var(--secondary)");
+                tP.setAttribute("font-size", "9px");
+                tP.setAttribute("font-weight", "bold");
+                tP.textContent = ctc.nameP;
+                txtGroup.appendChild(tP);
+            }
+            if (ctc.nameN) {
+                const tN = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                tN.setAttribute("x", x + 12);
+                tN.setAttribute("y", y + 15);
+                tN.setAttribute("text-anchor", "start");
+                tN.setAttribute("fill", "var(--text-muted)");
+                tN.setAttribute("font-size", "9px");
+                tN.setAttribute("font-weight", "bold");
+                tN.textContent = ctc.nameN;
+                txtGroup.appendChild(tN);
+            }
+            svg.appendChild(txtGroup);
         }
     }
 }

@@ -100,7 +100,8 @@ function updateCanvas() {
             onCompDblClick: (e, fId, r, c, type, key) => handleCompDblClick(e, fId, r, c, type, key),
             onCompContextMenu: (e, fId, r, c, type, key) => handleCompContextMenu(e, fId, r, c, type, key),
             onCtcMouseDown: (e, fId, r, c, type, key, ctc) => handleCtcMouseDown(e, fId, r, c, type, key, ctc),
-            onCtcContextMenu: (e, fId, r, c, type, key) => handleCtcContextMenu(e, fId, r, c, type, key)
+            onCtcContextMenu: (e, fId, r, c, type, key) => handleCtcContextMenu(e, fId, r, c, type, key),
+            onCtcDblClick: (e, fId, r, c, type, key, ctc) => handleCtcDblClick(e, fId, r, c, type, key, ctc)
         };
         
         renderField(field, svg, simulationData, renderState);
@@ -372,6 +373,19 @@ function handleCompMouseDown(e, fId, r, c, type, key) {
 }
 
 function handleCompDblClick(e, fId, r, c, type, key) {
+    e.stopPropagation();
+    if (appState.isSimulationMode) return;
+    if (appState.activeTool === 'select') {
+        if (!appState.selectedKeys.has(key)) {
+            appState.selectedKeys.clear();
+            appState.selectedKeys.add(key);
+            updateCanvas();
+        }
+        openPropertiesForSelected();
+    }
+}
+
+function handleCtcDblClick(e, fId, r, c, type, key, ctc) {
     e.stopPropagation();
     if (appState.isSimulationMode) return;
     if (appState.activeTool === 'select') {
@@ -1355,12 +1369,44 @@ function generatePropertySection(type, compsOfType) {
 }
 
 let currentSelectedCompsForRename = [];
+let currentSelectedCtcsForRename = [];
+
+function generateContactorPropertySection(ctcs) {
+    let html = '';
+    ctcs.forEach(item => {
+        const ctc = item.ctc;
+        const nameP = ctc.nameP || '';
+        const nameN = ctc.nameN || '';
+        const label = ctc.type === 'horizontal' ? "разделитель (горизонт.)" :
+                      ctc.type === 'vertical' ? "разделитель (вертик.)" : "контактор";
+        const cellLabel = `${label} [Строка ${item.r}, Столбец ${item.c}]`;
+        
+        html += `
+            <div class="property-section ctc-property-section" data-key="${item.globalKey}" data-field-id="${item.fieldId}" data-r="${item.r}" data-c="${item.c}" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.02); margin-top: 8px;">
+                <div style="font-weight: bold; font-size: 13px; color: var(--primary); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">⚙️ ${cellLabel}</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                        <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Контактор + (Положительная шина):</label>
+                        <input type="text" class="dialog-input ctc-name-p-input" value="${nameP}" placeholder="Например: k10" style="width: 100%;">
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Контактор - (Отрицательная шина):</label>
+                        <input type="text" class="dialog-input ctc-name-n-input" value="${nameN}" placeholder="Например: k429" style="width: 100%;">
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    return html;
+}
 
 function openPropertiesForSelected() {
     const menu = document.getElementById('custom-context-menu');
     if (menu) menu.style.display = 'none';
     
     currentSelectedCompsForRename = [];
+    currentSelectedCtcsForRename = [];
+    
     appState.selectedKeys.forEach(selKey => {
         const parts = selKey.split('-');
         const fId = parseInt(parts[0]);
@@ -1368,22 +1414,32 @@ function openPropertiesForSelected() {
         const r = parseInt(parts[2]);
         const c = parseInt(parts[3]);
         const field = appState.fields.find(f => f.id === fId);
-        if (field && type === 'comp' && field.components[`${r}-${c}`]) {
-            currentSelectedCompsForRename.push({
-                globalKey: selKey,
-                fieldId: fId,
-                r, c,
-                comp: field.components[`${r}-${c}`]
-            });
+        if (field) {
+            if (type === 'comp' && field.components[`${r}-${c}`]) {
+                currentSelectedCompsForRename.push({
+                    globalKey: selKey,
+                    fieldId: fId,
+                    r, c,
+                    comp: field.components[`${r}-${c}`]
+                });
+            } else if (type === 'ctc' && field.contactors[`${r}-${c}`]) {
+                currentSelectedCtcsForRename.push({
+                    globalKey: selKey,
+                    fieldId: fId,
+                    r, c,
+                    ctc: field.contactors[`${r}-${c}`]
+                });
+            }
         }
     });
     
-    if (currentSelectedCompsForRename.length === 0) return;
+    if (currentSelectedCompsForRename.length === 0 && currentSelectedCtcsForRename.length === 0) return;
     
     const container = document.getElementById('rename-dialog-sections-container');
     if (!container) return;
     container.innerHTML = '';
     
+    // 1. Components
     const grouped = {};
     currentSelectedCompsForRename.forEach(item => {
         const t = item.comp.type;
@@ -1397,9 +1453,14 @@ function openPropertiesForSelected() {
         }
     });
     
+    // 2. Contactors
+    if (currentSelectedCtcsForRename.length > 0) {
+        container.innerHTML += generateContactorPropertySection(currentSelectedCtcsForRename);
+    }
+    
     document.getElementById('rename-dialog').style.display = 'flex';
     
-    container.querySelectorAll('.section-name-input').forEach(inp => {
+    container.querySelectorAll('.dialog-input').forEach(inp => {
         inp.onkeydown = (e) => {
             if (e.key === 'Enter') {
                 saveComponentRename();
@@ -1411,26 +1472,27 @@ function openPropertiesForSelected() {
 function closeRenameDialog() {
     document.getElementById('rename-dialog').style.display = 'none';
     currentSelectedCompsForRename = [];
+    currentSelectedCtcsForRename = [];
 }
 
 function saveComponentRename() {
     const container = document.getElementById('rename-dialog-sections-container');
     if (!container) return;
-    const sections = container.querySelectorAll('.property-section');
     
+    // ── Phase 1: Read and validate Component name changes ──
+    const compSections = container.querySelectorAll('.property-section:not(.ctc-property-section)');
     const updates = [];
-    const selectedGlobalKeys = new Set(currentSelectedCompsForRename.map(x => x.globalKey));
     
-    for (let sec of sections) {
+    for (let sec of compSections) {
         const type = sec.getAttribute('data-type');
         const nameInput = sec.querySelector('.section-name-input');
         const powerSelect = sec.querySelector('.section-power-select');
+        if (!nameInput) continue;
         
         const origTemplate = nameInput.getAttribute('data-original');
         const newPattern = nameInput.value.trim();
         
         let prefix = type === 'inverter' ? "Inv " : (type === 'pistol' ? "P " : "C");
-        
         const compsOfType = currentSelectedCompsForRename.filter(x => x.comp.type === type);
         
         for (let item of compsOfType) {
@@ -1461,6 +1523,71 @@ function saveComponentRename() {
         }
     }
     
+    // ── Phase 2: Read and validate Contactor name changes ──
+    const ctcSections = container.querySelectorAll('.ctc-property-section');
+    const proposedCtcUpdates = [];
+    
+    // Collect all current names in the project to check for global duplicates
+    const proposedGlobalNames = {}; // { lowercaseName: globalKey }
+    appState.fields.forEach(f => {
+        for (let k in f.contactors) {
+            const ctc = f.contactors[k];
+            const gKey = `${f.id}-ctc-${k}`;
+            if (ctc.nameP) {
+                proposedGlobalNames[ctc.nameP.trim().toLowerCase()] = gKey;
+            }
+            if (ctc.nameN) {
+                proposedGlobalNames[ctc.nameN.trim().toLowerCase()] = gKey;
+            }
+        }
+    });
+
+    for (let sec of ctcSections) {
+        const gKey = sec.getAttribute('data-key');
+        const namePVal = sec.querySelector('.ctc-name-p-input').value.trim();
+        const nameNVal = sec.querySelector('.ctc-name-n-input').value.trim();
+        
+        // Remove old names of this contactor from uniqueness map
+        for (let name in proposedGlobalNames) {
+            if (proposedGlobalNames[name] === gKey) {
+                delete proposedGlobalNames[name];
+            }
+        }
+        
+        // Validate P-name
+        if (namePVal) {
+            const lowerP = namePVal.toLowerCase();
+            if (proposedGlobalNames[lowerP]) {
+                alert(`Имя контактора "${namePVal}" уже используется! Названия контакторов должны быть уникальными.`);
+                return;
+            }
+            proposedGlobalNames[lowerP] = gKey;
+        }
+        
+        // Validate N-name
+        if (nameNVal) {
+            const lowerN = nameNVal.toLowerCase();
+            if (proposedGlobalNames[lowerN]) {
+                alert(`Имя контактора "${nameNVal}" уже используется! Названия контакторов должны быть уникальными.`);
+                return;
+            }
+            proposedGlobalNames[lowerN] = gKey;
+        }
+        
+        // Ensure positive and negative names are different
+        if (namePVal && nameNVal && namePVal.toLowerCase() === nameNVal.toLowerCase()) {
+            alert(`Контактор не может иметь одинаковое имя для положительного и отрицательного полюса ("${namePVal}")!`);
+            return;
+        }
+        
+        proposedCtcUpdates.push({
+            gKey,
+            nameP: namePVal || null,
+            nameN: nameNVal || null
+        });
+    }
+
+    // ── Phase 3: Apply changes ──
     let changed = false;
     updates.forEach(u => {
         if (u.item.comp.name !== u.finalName || u.item.comp.power !== u.newPower) {
@@ -1469,6 +1596,24 @@ function saveComponentRename() {
                 u.item.comp.power = u.newPower;
             }
             changed = true;
+        }
+    });
+    
+    proposedCtcUpdates.forEach(upd => {
+        const parts = upd.gKey.split('-');
+        const fId = parseInt(parts[0]);
+        const r = parts[2];
+        const c = parts[3];
+        const field = appState.fields.find(f => f.id === fId);
+        if (field) {
+            const ctc = field.contactors[`${r}-${c}`];
+            if (ctc) {
+                if (ctc.nameP !== upd.nameP || ctc.nameN !== upd.nameN) {
+                    ctc.nameP = upd.nameP;
+                    ctc.nameN = upd.nameN;
+                    changed = true;
+                }
+            }
         }
     });
     

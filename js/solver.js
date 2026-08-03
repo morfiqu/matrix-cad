@@ -34,6 +34,14 @@ function calculateSimulation(fields) {
         }
     }
 
+    // Check for duplicate contactor names globally
+    const duplicateCtcNames = getContactorNameDuplicates(fields);
+    if (duplicateCtcNames.size > 0) {
+        duplicateCtcNames.forEach(name => {
+            errorMessages.push(`Найдено несколько контакторов с одинаковым именем: "${name.toUpperCase()}"`);
+        });
+    }
+
     // Reset stats
     for (let f of fields) {
         for (let c in f.components) {
@@ -630,4 +638,36 @@ function findOptimalPath(fields, pistolUid, numInverters) {
         reachable: true
     };
 }
+
+/**
+ * Find globally duplicated contactor names across all fields/sheets.
+ * Returns a Set of lowercase duplicate name strings.
+ */
+function getContactorNameDuplicates(fields) {
+    const nameCounts = {};
+    const duplicateNames = new Set();
+    
+    fields.forEach(f => {
+        for (let k in f.contactors) {
+            const ctc = f.contactors[k];
+            if (ctc.nameP) {
+                const nP = ctc.nameP.trim().toLowerCase();
+                nameCounts[nP] = (nameCounts[nP] || 0) + 1;
+            }
+            if (ctc.nameN) {
+                const nN = ctc.nameN.trim().toLowerCase();
+                nameCounts[nN] = (nameCounts[nN] || 0) + 1;
+            }
+        }
+    });
+    
+    for (let name in nameCounts) {
+        if (nameCounts[name] > 1) {
+            duplicateNames.add(name);
+        }
+    }
+    
+    return duplicateNames;
+}
+
 
