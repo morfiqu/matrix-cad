@@ -49,7 +49,7 @@ function calculateSimulation(fields) {
     const contactorPowers = {};
     const contactorCurrents = {};
     const pistolPowers = {};
-    const pistolToInverters = {};
+    const inverterToPaths = {};
     const errorMessages = [];
     const invReachesPistol = new Set();
     const invReachedCables = new Set();
@@ -169,10 +169,10 @@ function calculateSimulation(fields) {
                         if (cellComp.type === 'pistol') {
                             activePaths.add(`${current.fieldId}-pst-${current.c}`);
                             const uid = `${current.fieldId}-${cKey}`;
-                            pistolPowers[uid] = (pistolPowers[uid] || 0) + invPower;
-                            reachedPistols.add(`${current.fieldId}-${cKey}`);
+                            reachedPistols.add(uid);
                             invReachesPistol.add(`${field.id}-${key}`);
                             pathContactorsForInv.push({
+                                pistolUid: uid,
                                 breakers: currentPath,
                                 transitions: current.transitionCtcs || [],
                                 segments: currentSegments
@@ -311,29 +311,7 @@ function calculateSimulation(fields) {
 
                 if (reachedPistols.size > 0) {
                     const invGlobalKey = `${field.id}-${key}`;
-                    const invVolt = getInverterVoltage(fields, field.id, startR);
-                    const invCurrent = invVolt > 0 ? (invPower * 1000) / invVolt : 0;
-                    
-                    reachedPistols.forEach(pUid => {
-                        if (!pistolToInverters[pUid]) pistolToInverters[pUid] = [];
-                        pistolToInverters[pUid].push(invGlobalKey);
-                    });
-
-                    pathContactorsForInv.forEach(pathData => {
-                        pathData.breakers.forEach(ctcKey => {
-                            contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
-                            contactorCurrents[ctcKey] = (contactorCurrents[ctcKey] || 0) + invCurrent;
-                        });
-                        pathData.transitions.forEach(ctcKey => {
-                            contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + invPower;
-                            contactorCurrents[ctcKey] = (contactorCurrents[ctcKey] || 0) + invCurrent;
-                        });
-                        if (pathData.segments) {
-                            pathData.segments.forEach(seg => {
-                                flowDirections[seg.id] = seg.dir;
-                            });
-                        }
-                    });
+                    inverterToPaths[invGlobalKey] = pathContactorsForInv;
                 }
 
                 if (reachedPistols.size > 1) {
@@ -458,47 +436,37 @@ function calculateSimulation(fields) {
                     for (let i = 1; i < N; i++) {
                         ringTotal += ringInverters[i].power;
                     }
-                    const branchP = ringTotal / 2;
-                    const ringVolt = getInverterVoltage(fields, ringInverters[0].fId, ringInverters[0].r);
-                    let cumP = 0;
-                    ringBreakers.forEach((bKey, idx) => {
-                        if (idx === 0 || idx === N - 1) {
-                            contactorPowers[bKey] = branchP;
-                        } else {
-                            cumP += ringInverters[idx].power;
-                            contactorPowers[bKey] = Math.abs(cumP - branchP);
-                        }
-                        contactorCurrents[bKey] = ringVolt > 0 ? (contactorPowers[bKey] * 1000) / ringVolt : 0;
+                    
+                    if (!window.ringSolversList) window.ringSolversList = [];
+                    window.ringSolversList.push({
+                        ringInverters,
+                        ringBreakers,
+                        ringTotal,
+                        loadFId: ringInverters[0].fId,
+                        loadR: ringInverters[0].r
                     });
-
-                    const loadFId = ringInverters[0].fId;
-                    const loadR = ringInverters[0].r;
-                    const loadF = fields.find(x => x.id === loadFId);
-                    if (loadF) {
-                        for (let c = 1; c < loadF.cols - 1; c++) {
-                            const ctc = loadF.contactors[`${loadR}-${c}`];
-                            if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
-                                const ctcKey = `${loadFId}-ctc-${loadR}-${c}`;
-                                contactorPowers[ctcKey] = ringInverters[0].power + ringTotal;
-                                const ringVolt = getInverterVoltage(fields, loadFId, loadR);
-                                contactorCurrents[ctcKey] = ringVolt > 0 ? (contactorPowers[ctcKey] * 1000) / ringVolt : 0;
-                            }
-                        }
-                    }
                 }
             }
         }
     });
 
-    // Calculate inverterRealPowers (actual load-based output power)
-    const inverterRealPowers = {};
-    fields.forEach(f => {
-        for (let k in f.components) {
-            if (f.components[k].type === 'inverter') {
-                inverterRealPowers[`${f.id}-${k}`] = 0;
+    // ── Load-based actual power and current flow calculation ──
+    const pistolToInverters = {};
+    for (let invUid in inverterToPaths) {
+        inverterToPaths[invUid].forEach(pathData => {
+            const pUid = pathData.pistolUid;
+            if (!pistolToInverters[pUid]) pistolToInverters[pUid] = [];
+            if (!pistolToInverters[pUid].includes(invUid)) {
+                pistolToInverters[pUid].push(invUid);
             }
-        }
-    });
+        });
+    }
+
+    // Calculate nominal load drawn from each inverter
+    const inverterNominalLoads = {};
+    for (let invUid in inverterToPaths) {
+        inverterNominalLoads[invUid] = 0;
+    }
 
     for (let pistolUid in pistolToInverters) {
         const parts = pistolUid.split('-');
@@ -508,24 +476,130 @@ function calculateSimulation(fields) {
         if (N > 0) {
             const share = pDemand / N;
             invs.forEach(invUid => {
-                inverterRealPowers[invUid] = (inverterRealPowers[invUid] || 0) + share;
+                inverterNominalLoads[invUid] = (inverterNominalLoads[invUid] || 0) + share;
             });
         }
     }
 
-    // Cap inverter real power at its configured capacity
+    // Calculate inverter real powers and scaling factor
+    const inverterRealPowers = {};
+    const inverterScales = {};
     fields.forEach(f => {
         for (let k in f.components) {
             const comp = f.components[k];
             if (comp.type === 'inverter') {
                 const invUid = `${f.id}-${k}`;
                 const pConfig = getInverterPower(comp, f.id, k);
-                if (inverterRealPowers[invUid] > pConfig) {
-                    inverterRealPowers[invUid] = pConfig;
+                const lNom = inverterNominalLoads[invUid] || 0;
+                
+                let scale = 1;
+                if (lNom > 0) {
+                    scale = Math.min(1, pConfig / lNom);
                 }
+                inverterScales[invUid] = scale;
+                inverterRealPowers[invUid] = lNom * scale;
             }
         }
     });
+
+    // Calculate actual power received by each pistol
+    fields.forEach(f => {
+        for (let k in f.components) {
+            if (f.components[k].type === 'pistol') {
+                pistolPowers[`${f.id}-${k}`] = 0;
+            }
+        }
+    });
+
+    const S_ij = {};
+    for (let pistolUid in pistolToInverters) {
+        const parts = pistolUid.split('-');
+        const pDemand = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
+        const invs = pistolToInverters[pistolUid];
+        const N = invs.length;
+        
+        let pActual = 0;
+        if (N > 0) {
+            invs.forEach(invUid => {
+                const scale = inverterScales[invUid] || 1;
+                const share = (pDemand / N) * scale;
+                S_ij[`${invUid}->${pistolUid}`] = share;
+                pActual += share;
+            });
+        }
+        pistolPowers[pistolUid] = pActual;
+    }
+
+    // Now, accumulate contactor powers and currents from BFS paths
+    for (let invUid in inverterToPaths) {
+        const parts = invUid.split('-');
+        const fId = parseInt(parts[0]);
+        const r = parseInt(parts[1].split('-')[0]); // inverter row
+        const invVolt = getInverterVoltage(fields, fId, r);
+
+        inverterToPaths[invUid].forEach(pathData => {
+            const pUid = pathData.pistolUid;
+            const actualPowerFlow = S_ij[`${invUid}->${pUid}`] || 0;
+            const actualCurrentFlow = invVolt > 0 ? (actualPowerFlow * 1000) / invVolt : 0;
+
+            pathData.breakers.forEach(ctcKey => {
+                contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + actualPowerFlow;
+                contactorCurrents[ctcKey] = (contactorCurrents[ctcKey] || 0) + actualCurrentFlow;
+            });
+            pathData.transitions.forEach(ctcKey => {
+                contactorPowers[ctcKey] = (contactorPowers[ctcKey] || 0) + actualPowerFlow;
+                contactorCurrents[ctcKey] = (contactorCurrents[ctcKey] || 0) + actualCurrentFlow;
+            });
+            if (pathData.segments) {
+                pathData.segments.forEach(seg => {
+                    flowDirections[seg.id] = seg.dir;
+                });
+            }
+        });
+    }
+
+    // Process Ring Solvers with actual loads
+    if (window.ringSolversList) {
+        window.ringSolversList.forEach(ring => {
+            const { ringInverters, ringBreakers, ringTotal, loadFId, loadR } = ring;
+            const N = ringInverters.length;
+            
+            let ringActualLoad = 0;
+            ringInverters.forEach(ri => {
+                const riUid = `${ri.fId}-${ri.r}-0`;
+                ringActualLoad += inverterRealPowers[riUid] || 0;
+            });
+
+            const scale = ringTotal > 0 ? (ringActualLoad / ringTotal) : 0;
+            const branchP = (ringTotal / 2) * scale;
+            const ringVolt = getInverterVoltage(fields, ringInverters[0].fId, ringInverters[0].r);
+            
+            let cumP = 0;
+            ringBreakers.forEach((bKey, idx) => {
+                if (idx === 0 || idx === N - 1) {
+                    contactorPowers[bKey] = branchP;
+                } else {
+                    cumP += ringInverters[idx].power * scale;
+                    contactorPowers[bKey] = Math.abs(cumP - branchP);
+                }
+                contactorCurrents[bKey] = ringVolt > 0 ? (contactorPowers[bKey] * 1000) / ringVolt : 0;
+            });
+
+            const loadF = fields.find(x => x.id === loadFId);
+            if (loadF) {
+                for (let c = 1; c < loadF.cols - 1; c++) {
+                    const ctc = loadF.contactors[`${loadR}-${c}`];
+                    if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
+                        const ctcKey = `${loadFId}-ctc-${loadR}-${c}`;
+                        contactorPowers[ctcKey] = ringActualLoad;
+                        const ringVolt = getInverterVoltage(fields, loadFId, loadR);
+                        contactorCurrents[ctcKey] = ringVolt > 0 ? (contactorPowers[ctcKey] * 1000) / ringVolt : 0;
+                    }
+                }
+            }
+        });
+        window.ringSolversList = [];
+    }
 
     return {
         activePaths,
