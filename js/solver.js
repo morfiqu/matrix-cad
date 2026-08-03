@@ -437,9 +437,9 @@ function calculateSimulation(fields) {
 
 /**
  * Find optimal path from required inverters to a specific pistol.
- * Runs a reverse BFS from the pistol through closed contactors to discover reachable inverters,
- * recording the wire segment IDs along the way. Selects the closest `numInverters` inverters
- * by path length (hop count) and returns their combined segment sets for green-line highlighting.
+ * Treats ALL contactors (standard, horizontal breakers, vertical breakers) as closed (traversable)
+ * to model the path configuration *regardless* of current simulation state.
+ * Supports cross-field cable jumps.
  *
  * @param {Array} fields - All field objects
  * @param {string} pistolUid - Pistol unique ID: "{fieldId}-{r}-{c}"
@@ -488,7 +488,7 @@ function findOptimalPath(fields, pistolUid, numInverters) {
         const ctc = f.contactors[cKey];
         const cellComp = f.components[cKey];
 
-        // Found an inverter — record it
+        // 1. Found an inverter — record it
         if (cellComp && cellComp.type === 'inverter') {
             foundInverters.push({
                 uid: `${current.fieldId}-${cKey}`,
@@ -500,18 +500,75 @@ function findOptimalPath(fields, pistolUid, numInverters) {
             continue; // Do not propagate beyond the inverter
         }
 
+        // 2. Found a cable — jump to connected sheets
+        if (cellComp && cellComp.type === 'cable') {
+            const netName = cellComp.name.toLowerCase();
+            fields.forEach(otherField => {
+                for (let otherKey in otherField.components) {
+                    const otherComp = otherField.components[otherKey];
+                    if (otherComp.type === 'cable' && otherComp.name.toLowerCase() === netName) {
+                        const otherParts = otherKey.split('-');
+                        const oR = parseInt(otherParts[0]);
+                        const oC = parseInt(otherParts[1]);
+
+                        let oHasRow = false;
+                        if (otherComp.pos === 'middle' || otherComp.pos === 'left' || otherComp.pos === 'right') {
+                            for (let colCheck = 0; colCheck < otherField.cols; colCheck++) {
+                                const cc = otherField.components[`${oR}-${colCheck}`];
+                                if (cc && (cc.type === 'inverter' || (cc.type === 'cable' && cc.pos !== 'middle' && cc.pos !== 'right'))) {
+                                    oHasRow = true;
+                                    break;
+                                }
+                            }
+                        }
+                        let oHasCol = false;
+                        if (otherComp.pos === 'middle' || otherComp.pos === 'top' || otherComp.pos === 'bottom') {
+                            for (let rowCheck = 0; rowCheck < otherField.rows; rowCheck++) {
+                                const rc = otherField.components[`${rowCheck}-${oC}`];
+                                if (rc && (rc.type === 'pistol' || (rc.type === 'cable' && rc.pos !== 'middle' && rc.pos !== 'right'))) {
+                                    oHasCol = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (oHasRow && oR > 0 && oR < otherField.rows - 1) {
+                            if (oC > 0) {
+                                const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC - 1}`;
+                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC - 1, segments: [...current.segments, segId] });
+                            }
+                            if (oC < otherField.cols - 1) {
+                                const segId = `${otherField.id}-wire-row-p-seg-${oR}-${oC}`;
+                                queue.push({ fieldId: otherField.id, type: 'row', r: oR, c: oC + 1, segments: [...current.segments, segId] });
+                            }
+                        }
+                        if (oHasCol && oC > 0 && oC < otherField.cols - 1) {
+                            if (oR > 0) {
+                                const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR - 1}`;
+                                queue.push({ fieldId: otherField.id, type: 'col', r: oR - 1, c: oC, segments: [...current.segments, segId] });
+                            }
+                            if (oR < otherField.rows - 1) {
+                                const segId = `${otherField.id}-wire-col-p-seg-${oC}-${oR}`;
+                                queue.push({ fieldId: otherField.id, type: 'col', r: oR + 1, c: oC, segments: [...current.segments, segId] });
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Normal grid wire propagation
         if (current.type === 'col') {
-            // Standard closed contactor at this cell → can switch to row traversal
-            if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
+            // Standard contactor at this cell → can switch to row traversal (ignore ctc.closed!)
+            if (ctc && (!ctc.type || ctc.type === 'standard')) {
                 const rowKey = `${current.fieldId}-row-${current.r}-${current.c}`;
                 if (!visitedNodes.has(rowKey)) {
                     queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments });
                 }
             }
 
-            // Continue up/down along the col wire (unless blocked by open vertical contactor)
-            const vertBlocked = ctc && ctc.type === 'vertical' && !ctc.closed;
-            if (!vertBlocked && current.c > 0 && current.c < f.cols - 1) {
+            // Continue up/down along col wire (ignore vertical breaker closed/open state)
+            if (current.c > 0 && current.c < f.cols - 1) {
                 // Up
                 if (current.r > 1) {
                     const nextR = current.r - 1;
@@ -527,17 +584,16 @@ function findOptimalPath(fields, pistolUid, numInverters) {
             }
 
         } else if (current.type === 'row') {
-            // Standard closed contactor → switch to col traversal
-            if (ctc && (!ctc.type || ctc.type === 'standard') && ctc.closed) {
+            // Standard contactor → switch to col traversal (ignore ctc.closed!)
+            if (ctc && (!ctc.type || ctc.type === 'standard')) {
                 const colKey = `${current.fieldId}-col-${current.r}-${current.c}`;
                 if (!visitedNodes.has(colKey)) {
                     queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments });
                 }
             }
 
-            // Continue left/right along the row wire (unless blocked by open horizontal contactor)
-            const horizBlocked = ctc && ctc.type === 'horizontal' && !ctc.closed;
-            if (!horizBlocked && current.r > 0 && current.r < f.rows - 1) {
+            // Continue left/right along row wire (ignore horizontal breaker closed/open state)
+            if (current.r > 0 && current.r < f.rows - 1) {
                 // Left
                 if (current.c > 0) {
                     const nextC = current.c - 1;
@@ -574,3 +630,4 @@ function findOptimalPath(fields, pistolUid, numInverters) {
         reachable: true
     };
 }
+

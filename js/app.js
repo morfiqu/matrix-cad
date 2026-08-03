@@ -1734,13 +1734,15 @@ function renderPistolDemandTable(simulationData) {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    // Collect minimum inverter power for calculation
+    // Collect minimum inverter power and total inverter power for calculation
     let minInvPower = 60;
+    let totalInvPower = 0;
     appState.fields.forEach(f => {
         for (let k in f.components) {
             const c = f.components[k];
             if (c.type === 'inverter') {
                 const p = c.power !== undefined ? c.power : 60;
+                totalInvPower += p;
                 if (p < minInvPower) minInvPower = p;
             }
         }
@@ -1757,6 +1759,8 @@ function renderPistolDemandTable(simulationData) {
             const currentDemand = appState.pistolDemands[uid] || '';
             const demandNum = parseFloat(currentDemand) || 0;
             const invCount = demandNum > 0 ? Math.ceil(demandNum / minInvPower) : '—';
+            
+            const isPowerExcess = demandNum > totalInvPower;
 
             const isHighlighted = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid;
             const lastResult = appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === uid
@@ -1770,15 +1774,17 @@ function renderPistolDemandTable(simulationData) {
                 <td>
                     <input
                         type="number"
-                        class="demand-input"
+                        class="demand-input ${isPowerExcess ? 'power-excess-warning' : ''}"
                         min="0"
                         step="1"
                         value="${currentDemand}"
                         data-uid="${uid}"
                         placeholder="кВт"
+                        style="${isPowerExcess ? 'border-color: var(--danger); background: rgba(255, 74, 107, 0.08);' : ''}"
+                        title="${isPowerExcess ? `Превышает общую мощность инверторов (${totalInvPower} кВт)` : ''}"
                     >
                 </td>
-                <td class="demand-count-cell">${invCount}</td>
+                <td class="demand-count-cell" style="${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
                 <td>
                     <button
                         class="demand-find-btn ${isHighlighted ? (lastResult && lastResult.reachable ? 'active' : 'unreachable') : ''}"
@@ -1789,26 +1795,58 @@ function renderPistolDemandTable(simulationData) {
             `;
             tbody.appendChild(tr);
 
-            // Info row (shown when highlighted)
+            // Info row (shown when highlighted or warning)
             const infoTr = document.createElement('tr');
-            infoTr.className = `demand-info-row${isHighlighted && lastResult && lastResult.reachable ? ' visible' : ''}`;
-            infoTr.innerHTML = `<td colspan="4" class="demand-info-cell">${
-                isHighlighted && lastResult && lastResult.reachable
-                    ? 'Инверторы: ' + lastResult.usedInverters.map(i => i.name).join(', ')
-                    : isHighlighted && lastResult && !lastResult.reachable
-                        ? '⚠️ Маршрут не найден'
-                        : ''
-            }</td>`;
+            const showInfo = isHighlighted || isPowerExcess;
+            infoTr.className = `demand-info-row${showInfo ? ' visible' : ''}`;
+            
+            let infoText = '';
+            if (isPowerExcess) {
+                infoText = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${totalInvPower} кВт)</span>`;
+            } else if (isHighlighted && lastResult && lastResult.reachable) {
+                infoText = 'Инверторы: ' + lastResult.usedInverters.map(i => i.name).join(', ');
+            } else if (isHighlighted && lastResult && !lastResult.reachable) {
+                infoText = '<span style="color: var(--danger)">⚠️ Маршрут не найден</span>';
+            }
+            
+            infoTr.innerHTML = `<td colspan="4" class="demand-info-cell">${infoText}</td>`;
             tbody.appendChild(infoTr);
 
             // Bind demand input
             const input = tr.querySelector('.demand-input');
             input.addEventListener('input', function() {
                 appState.pistolDemands[this.dataset.uid] = this.value;
-                // Update count cell without full re-render
                 const val = parseFloat(this.value) || 0;
+                
+                // Recalculate warning on fly
+                const excess = val > totalInvPower;
                 const cnt = val > 0 ? Math.ceil(val / minInvPower) : '—';
-                tr.querySelector('.demand-count-cell').textContent = cnt;
+                
+                const cntCell = tr.querySelector('.demand-count-cell');
+                cntCell.textContent = cnt;
+                cntCell.style.color = excess ? 'var(--danger)' : 'var(--secondary)';
+                
+                if (excess) {
+                    this.style.borderColor = 'var(--danger)';
+                    this.style.background = 'rgba(255, 74, 107, 0.08)';
+                    this.title = `Превышает общую мощность инверторов (${totalInvPower} кВт)`;
+                } else {
+                    this.style.borderColor = 'var(--border)';
+                    this.style.background = 'rgba(255,255,255,0.06)';
+                    this.title = '';
+                }
+                
+                // Refresh info row on fly if not highlighted
+                if (!isHighlighted) {
+                    const infoCell = infoTr.querySelector('.demand-info-cell');
+                    if (excess) {
+                        infoTr.classList.add('visible');
+                        infoCell.innerHTML = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${totalInvPower} кВт)</span>`;
+                    } else {
+                        infoTr.classList.remove('visible');
+                        infoCell.innerHTML = '';
+                    }
+                }
             });
 
             // Bind find button
@@ -1825,6 +1863,7 @@ function renderPistolDemandTable(simulationData) {
         tbody.appendChild(tr);
     }
 }
+
 
 /**
  * Toggle highlight of the optimal path to a pistol.
