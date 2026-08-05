@@ -2369,6 +2369,53 @@ function applyAutoConnections() {
     });
     appState.autoClosedContactors = [];
 
+    // ── SAFETY NET: Resolve double-claimed inverters ────────────────────────
+    // If the same inverter uid appears in two routes (edge case from rapid
+    // connection/disconnection events), keep it only in the highest-priority
+    // route (lowest SoC). Lower-priority route loses that inverter.
+    {
+        const invOwners = {}; // invUid → pistolUid with highest priority (lowest SoC)
+        const conflicts  = {}; // invUid → [loser pistolUids]
+
+        for (let pUid in appState.activeAutoRoutes) {
+            const r = appState.activeAutoRoutes[pUid];
+            if (!r.usedInverters) continue;
+            r.usedInverters.forEach(inv => {
+                if (!invOwners[inv.uid]) {
+                    invOwners[inv.uid] = pUid;
+                } else {
+                    // Compare priorities: lower SoC = higher priority
+                    const existingSoC = getSimPistolSoC(invOwners[inv.uid]);
+                    const newSoC = getSimPistolSoC(pUid);
+                    if (newSoC < existingSoC) {
+                        // New pistol has higher priority — take ownership
+                        if (!conflicts[inv.uid]) conflicts[inv.uid] = [];
+                        conflicts[inv.uid].push(invOwners[inv.uid]);
+                        invOwners[inv.uid] = pUid;
+                    } else {
+                        if (!conflicts[inv.uid]) conflicts[inv.uid] = [];
+                        conflicts[inv.uid].push(pUid);
+                    }
+                }
+            });
+        }
+
+        for (let invUid in conflicts) {
+            conflicts[invUid].forEach(loserUid => {
+                const r = appState.activeAutoRoutes[loserUid];
+                if (r && r.usedInverters) {
+                    console.warn(`[Арбитраж-Safety] Инвертор ${invUid} занят 2 пистолетами. Убираем у ${loserUid} в пользу ${invOwners[invUid]}`);
+                    r.usedInverters = r.usedInverters.filter(i => i.uid !== invUid);
+                    // Force re-apply of contactors for this route (will be clean next frame)
+                    r.usedContactors = [];
+                    r.usedBuses = [];
+                    r.pathSegments = [];
+                }
+            });
+        }
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     appState.routingWarnings = [];
     appState.routingErrors = [];
 
