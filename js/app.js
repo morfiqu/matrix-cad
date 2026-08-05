@@ -1285,10 +1285,11 @@ function getLowestAvailableIndexGlobal(type) {
 
 function isNameDuplicateGlobal(newName, currentGlobalKey, type) {
     if (type === 'cable') return false; // Allow duplicate terminal IDs
+    const normalizedTargetKey = currentGlobalKey.replace('-comp-', '-');
     for (let f of appState.fields) {
         for (let key in f.components) {
             const globalKey = `${f.id}-${key}`;
-            if (globalKey === currentGlobalKey) continue;
+            if (globalKey === normalizedTargetKey) continue;
             
             const comp = f.components[key];
             if (comp.type === type && comp.name.toLowerCase() === newName.toLowerCase()) {
