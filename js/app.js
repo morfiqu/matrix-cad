@@ -2126,10 +2126,10 @@ function _runEnergyArbitration(newPistolUid) {
     const demand = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
     if (demand <= 0) return false;
 
-    // 1. Save backup of the entire routing state
-    const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
-    const rollback = () => {
-        appState.activeAutoRoutes = JSON.parse(backupRoutes);
+    // 1. Save backup of the entire routing state (global fallback)
+    const backupRoutesGlobal = JSON.stringify(appState.activeAutoRoutes);
+    const rollbackGlobal = () => {
+        appState.activeAutoRoutes = JSON.parse(backupRoutesGlobal);
         applyAutoConnections();
     };
 
@@ -2142,103 +2142,167 @@ function _runEnergyArbitration(newPistolUid) {
     });
     const maxAttempts = Math.max(5, totalInvertersCount);
     const mySoC = getSimPistolSoC(newPistolUid);
+    const triedCandidates = new Set();
 
     console.log(`[Арбитраж] Запуск каскадного поиска для ${newPistolUid} (SoC ${mySoC.toFixed(1)}%), макс. попыток: ${maxAttempts}`);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        // Step A: Try to find a route for ourselves using whatever is currently free/freed
+        // Step A: Try to find a route for ourselves using whatever is currently free
         const routed = _routePistolFree(newPistolUid);
-        
-        // Step B: Run dry-run simulation to check for errors/conflicts
         const check = _runSimulationDryRun();
 
-        if (routed && !check.hasErrors) {
-            // Success! The cascade found a conflict-free state
-            console.log(`[Арбитраж] Успех на шаге ${attempt}! Путь для ${newPistolUid} проложен без ошибок.`);
+        const myRoute = appState.activeAutoRoutes[newPistolUid];
+        if (routed && !check.hasErrors && myRoute && myRoute.reachable) {
+            // Success! The requester is fully satisfied and the state is conflict-free.
+            console.log(`[Арбитраж] Успех на шаге ${attempt}! Путь для ${newPistolUid} проложен на полную мощность без ошибок.`);
             return true;
         }
 
-        // If we reached this point, either we couldn't route, or the routed path caused conflicts.
-        // Let's identify the next donor/inverter to release.
-        
-        // Collect all inverters topologically reachable by newPistolUid
+        // If we got here, we are either not routed, have errors, or are not fully satisfied (reachable === false).
+        // Let's find the next donor to steal from.
         const discovery = findOptimalPath(appState.fields, newPistolUid, demand, new Set(), null, new Set());
         if (!discovery || !discovery.usedInverters || discovery.usedInverters.length === 0) {
             console.log(`[Арбитраж] Прервано на шаге ${attempt}: пистолет ${newPistolUid} физически не может достичь ни одного инвертора.`);
-            rollback();
+            rollbackGlobal();
             return false;
         }
 
-        // Gather candidates: inverters owned by donors with SoC > mySoC and having 2+ inverters
+        // Find the best donor candidate based on SoC, inverter/bus blocking, and priority
         let bestDonorUid = null;
         let bestDonorSoC = -1;
         let bestInvToRelease = null;
 
-        // Try to prioritize stealing inverters that are *actually* causing a direct conflict right now
         const myCurrentInvUids = new Set();
-        const myRoute = appState.activeAutoRoutes[newPistolUid];
         if (myRoute && myRoute.usedInverters) {
             myRoute.usedInverters.forEach(i => myCurrentInvUids.add(i.uid));
         }
 
-        discovery.usedInverters.forEach(inv => {
-            // Find who currently owns this inverter
-            for (let pUid in appState.activeAutoRoutes) {
-                if (pUid === newPistolUid) continue;
-                const donorRoute = appState.activeAutoRoutes[pUid];
-                if (!donorRoute.usedInverters) continue;
-                if (!donorRoute.usedInverters.some(i => i.uid === inv.uid)) continue;
-                if (donorRoute.usedInverters.length < 2) continue; // Must have at least one spare inverter left
+        for (let pUid in appState.activeAutoRoutes) {
+            if (pUid === newPistolUid) continue;
+            if (triedCandidates.has(pUid)) continue; // Don't try the same donor twice
 
-                const donorSoC = getSimPistolSoC(pUid);
-                if (donorSoC > mySoC) {
-                    // Calculate a score: direct conflicts get huge priority boost
-                    const isDirectConflict = myCurrentInvUids.has(inv.uid);
-                    const score = donorSoC + (isDirectConflict ? 1000 : 0);
-                    if (score > bestDonorSoC) {
-                        bestDonorUid = pUid;
-                        bestDonorSoC = score;
-                        bestInvToRelease = inv;
+            const donorRoute = appState.activeAutoRoutes[pUid];
+            const donorSoC = getSimPistolSoC(pUid);
+            if (donorSoC <= mySoC) continue; // Only steal from lower-priority cars (higher SoC)
+
+            let blocksInverter = null;
+            if (donorRoute.usedInverters) {
+                for (let i of donorRoute.usedInverters) {
+                    if (discovery.usedInverters.some(di => di.uid === i.uid)) {
+                        blocksInverter = i;
+                        break;
                     }
                 }
             }
-        });
 
-        if (!bestInvToRelease || !bestDonorUid) {
-            console.log(`[Арбитраж] Прервано на шаге ${attempt}: не найдено доступных доноров с более высоким SoC и свободными инверторами.`);
-            rollback();
+            let blocksBus = false;
+            if (donorRoute.usedBuses) {
+                for (let bus of donorRoute.usedBuses) {
+                    if (discovery.usedBuses.has(bus)) {
+                        blocksBus = true;
+                        break;
+                    }
+                }
+            }
+
+            if (blocksInverter || blocksBus) {
+                let score = donorSoC;
+                if (donorRoute.usedInverters && donorRoute.usedInverters.length >= 2) {
+                    score += 100;
+                }
+                if (blocksInverter) {
+                    score += 200;
+                    if (myCurrentInvUids.has(blocksInverter.uid)) {
+                        score += 1000;
+                    }
+                }
+                if (blocksBus) {
+                    score += 50;
+                }
+
+                if (score > bestDonorSoC) {
+                    bestDonorUid = pUid;
+                    bestDonorSoC = score;
+                    bestInvToRelease = blocksInverter;
+                }
+            }
+        }
+
+        if (!bestDonorUid) {
+            // No more candidates can be found.
+            // If the requester is already routed (even if not fully satisfied/reachable),
+            // and the state is conflict-free, we can accept this partial route as a success!
+            if (routed && !check.hasErrors && myRoute && myRoute.usedInverters && myRoute.usedInverters.length > 0) {
+                console.log(`[Арбитраж] Успех на шаге ${attempt}! Путь для ${newPistolUid} проложен частично (подключено ${myRoute.usedInverters.length} инв.), конфликт-фри.`);
+                return true;
+            }
+            console.log(`[Арбитраж] Прервано на шаге ${attempt}: не найдено доступных доноров для дальнейшего освобождения.`);
+            rollbackGlobal();
             return false;
         }
 
+        triedCandidates.add(bestDonorUid);
         const realDonorSoC = getSimPistolSoC(bestDonorUid);
-        console.log(`[Арбитраж Попытка ${attempt}/${maxAttempts}] Освобождаем инвертор ${bestInvToRelease.uid} у донора ${bestDonorUid} (SoC ${realDonorSoC.toFixed(1)}%)`);
+        console.log(`[Арбитраж Попытка ${attempt}/${maxAttempts}] Высвобождаем ресурсы у донора ${bestDonorUid} (SoC ${realDonorSoC.toFixed(1)}%)`);
+
+        // Save local backup of the state before applying this iteration's change
+        const backupRoutesLocal = JSON.stringify(appState.activeAutoRoutes);
 
         // Perform the steal:
-        // 1. Remove from donor
+        // 1. Remove chosen inverter from donor's list of allowed/owned inverters
         const donorRoute = appState.activeAutoRoutes[bestDonorUid];
-        donorRoute.usedInverters = donorRoute.usedInverters.filter(i => i.uid !== bestInvToRelease.uid);
+        if (bestInvToRelease) {
+            donorRoute.usedInverters = donorRoute.usedInverters.filter(i => i.uid !== bestInvToRelease.uid);
+        }
 
-        // 2. Re-route donor with its remaining inverters
-        const donorParts = bestDonorUid.split('-');
-        const donorDemand = getPistolDemand(donorParts[0], `${donorParts[1]}-${donorParts[2]}`);
-        const allowedForDonor = new Set(donorRoute.usedInverters.map(i => i.uid));
-        const { claimedInverters: claimedForDonor, claimedBuses: claimedBusesForDonor } = _getClaimedExcluding(bestDonorUid);
-        allowedForDonor.forEach(uid => claimedForDonor.delete(uid));
-        
-        const donorResult = findOptimalPath(appState.fields, bestDonorUid, donorDemand, claimedForDonor, allowedForDonor, claimedBusesForDonor);
-        if (donorResult && donorResult.usedInverters && donorResult.usedInverters.length > 0) {
-            _storeRoute(bestDonorUid, donorResult);
-        } else if (donorRoute.usedInverters.length > 0) {
-            donorRoute.usedContactors = [];
-            donorRoute.usedBuses = [];
-            donorRoute.pathSegments = [];
-            donorRoute.reachable = false;
+        // 2. Completely clear donor's route to free all its buses/cables
+        donorRoute.usedContactors = [];
+        donorRoute.usedBuses = [];
+        donorRoute.pathSegments = [];
+        donorRoute.reachable = false;
+
+        // 3. Route the requester FIRST (claims its buses/cables/inverters before the donor does)
+        const requesterRouted = _routePistolFree(newPistolUid);
+
+        // 4. Re-route the donor using remaining resources
+        if (donorRoute.usedInverters.length > 0) {
+            const donorParts = bestDonorUid.split('-');
+            const donorDemand = getPistolDemand(donorParts[0], `${donorParts[1]}-${donorParts[2]}`);
+            const allowedForDonor = new Set(donorRoute.usedInverters.map(i => i.uid));
+            const { claimedInverters: claimedForDonor, claimedBuses: claimedBusesForDonor } = _getClaimedExcluding(bestDonorUid);
+            allowedForDonor.forEach(uid => claimedForDonor.delete(uid));
+
+            const donorResult = findOptimalPath(appState.fields, bestDonorUid, donorDemand, claimedForDonor, allowedForDonor, claimedBusesForDonor);
+            if (donorResult && donorResult.usedInverters && donorResult.usedInverters.length > 0) {
+                _storeRoute(bestDonorUid, donorResult);
+            }
+        }
+
+        // 5. Verify the new layout
+        const checkLocal = _runSimulationDryRun();
+        const myRouteLocal = appState.activeAutoRoutes[newPistolUid];
+
+        if (requesterRouted && !checkLocal.hasErrors && myRouteLocal && myRouteLocal.usedInverters && myRouteLocal.usedInverters.length > 0) {
+            // Keep this step's change
+            console.log(`[Арбитраж] Шаг ${attempt} успешно применен. Продолжаем каскад.`);
+        } else {
+            // Rollback this step's change and try another candidate
+            console.log(`[Арбитраж] Шаг ${attempt} привел к ошибкам или отсутствию пути. Откатываем этот шаг.`);
+            appState.activeAutoRoutes = JSON.parse(backupRoutesLocal);
+            applyAutoConnections();
         }
     }
 
-    // If we finished the loop without success, rollback to protect the system
-    console.log(`[Арбитраж] Не удалось найти бесконфликтный путь за ${maxAttempts} шагов. Откатываемся.`);
-    rollback();
+    // If we finished the loop, check if we have a valid partial route
+    const checkFinal = _runSimulationDryRun();
+    const myRouteFinal = appState.activeAutoRoutes[newPistolUid];
+    if (!checkFinal.hasErrors && myRouteFinal && myRouteFinal.usedInverters && myRouteFinal.usedInverters.length > 0) {
+        console.log(`[Арбитраж] Завершено. Путь проложен частично.`);
+        return true;
+    }
+
+    console.log(`[Арбитраж] Не удалось найти бесконфликтный путь за ${maxAttempts} попыток. Откатываемся к началу.`);
+    rollbackGlobal();
     return false;
 }
 
