@@ -28,6 +28,10 @@
 
     let simTickerInterval = null;
     let lastTrafficCheckTime = 0;
+    
+    // Saves user's original manual autoConnect states
+    let preSimAutoConnectStates = {};
+    let preSimAutoConnectOrder = [];
 
     let currentDocks = {
         'work-sim-panel': 'floating',
@@ -545,6 +549,13 @@
             if (conn.currentSoC >= 100) {
                 console.log(`[Work Sim] Car at ${uid} is fully charged and leaves the station.`);
                 delete window.workSimActiveConnections[uid];
+                
+                // Disconnect pistol from auto-routing
+                if (window.appState && window.appState.pistolDemands[uid]) {
+                    window.appState.pistolDemands[uid].autoConnect = false;
+                    window.appState.autoConnectOrder = window.appState.autoConnectOrder.filter(x => x !== uid);
+                }
+                
                 stateChanged = true;
             }
         }
@@ -722,6 +733,14 @@
             connectedAt: window.workSimState.totalSeconds
         };
         
+        // Auto-enable routing for this pistol
+        if (window.appState && window.appState.pistolDemands[randomPistolUid]) {
+            window.appState.pistolDemands[randomPistolUid].autoConnect = true;
+            if (!window.appState.autoConnectOrder.includes(randomPistolUid)) {
+                window.appState.autoConnectOrder.push(randomPistolUid);
+            }
+        }
+        
         console.log(`[Work Sim] Connected ${car.brand} to ${randomPistolUid} at ${initialSoc}% SoC`);
         
         if (window.updateCanvas) window.updateCanvas();
@@ -743,6 +762,18 @@
             dash.style.display = 'flex';
             if (btn) btn.classList.add('active');
             if (layout) layout.classList.add('work-sim-active');
+            
+            // Save user's original autoConnect configurations
+            preSimAutoConnectStates = {};
+            if (window.appState && window.appState.pistolDemands) {
+                for (let k in window.appState.pistolDemands) {
+                    preSimAutoConnectStates[k] = window.appState.pistolDemands[k].autoConnect;
+                    window.appState.pistolDemands[k].autoConnect = false;
+                }
+            }
+            preSimAutoConnectOrder = [...(window.appState.autoConnectOrder || [])];
+            window.appState.autoConnectOrder = [];
+            
             renderCarsTable();
             updateSimUI();
             startSimTicker();
@@ -779,6 +810,18 @@
         window.workSimActiveConnections = {};
         lastTrafficCheckTime = 0;
         stopSimTicker();
+        
+        // Restore user's original autoConnect configurations
+        if (window.appState && window.appState.pistolDemands) {
+            for (let k in window.appState.pistolDemands) {
+                if (preSimAutoConnectStates[k] !== undefined) {
+                    window.appState.pistolDemands[k].autoConnect = preSimAutoConnectStates[k];
+                }
+            }
+        }
+        if (window.appState) {
+            window.appState.autoConnectOrder = preSimAutoConnectOrder || [];
+        }
         
         const panel = document.getElementById('work-sim-panel');
         const dash = document.getElementById('work-sim-dash-panel');
