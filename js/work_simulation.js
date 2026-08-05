@@ -5,9 +5,26 @@
 (function() {
     // Initial default cars config
     window.workSimCars = [
-        { brand: 'Tesla Model Y', capacity: 75, voltage: 400, current: 150, share: 35, socMin: 15, socMax: 45 },
-        { brand: 'Nissan Leaf', capacity: 40, voltage: 350, current: 100, share: 30, socMin: 10, socMax: 40 },
-        { brand: 'Zeekr 001', capacity: 100, voltage: 800, current: 250, share: 35, socMin: 20, socMax: 50 }
+        { brand: 'Tesla Model Y LR', capacity: 75, voltage: 400, current: 250, share: 10, socMin: 8, socMax: 25 },
+        { brand: 'Tesla Model 3 Perf', capacity: 79, voltage: 400, current: 250, share: 8, socMin: 10, socMax: 30 },
+        { brand: 'Porsche Taycan Plus', capacity: 93.4, voltage: 800, current: 330, share: 3, socMin: 5, socMax: 20 },
+        { brand: 'Hyundai Ioniq 5', capacity: 77.4, voltage: 800, current: 290, share: 6, socMin: 8, socMax: 25 },
+        { brand: 'Kia EV6 LR', capacity: 77.4, voltage: 800, current: 290, share: 5, socMin: 8, socMax: 25 },
+        { brand: 'Nissan Leaf e+', capacity: 62, voltage: 350, current: 150, share: 8, socMin: 10, socMax: 35 },
+        { brand: 'Audi e-tron 55', capacity: 95, voltage: 400, current: 375, share: 5, socMin: 10, socMax: 30 },
+        { brand: 'BMW i4 M50', capacity: 83.9, voltage: 400, current: 500, share: 5, socMin: 10, socMax: 30 },
+        { brand: 'Zeekr 001', capacity: 100, voltage: 800, current: 400, share: 4, socMin: 5, socMax: 20 },
+        { brand: 'BYD Han EV', capacity: 85.4, voltage: 570, current: 210, share: 5, socMin: 10, socMax: 35 },
+        { brand: 'Volkswagen ID.4 Pro', capacity: 77, voltage: 400, current: 310, share: 7, socMin: 10, socMax: 30 },
+        { brand: 'Volkswagen ID.3 Pro', capacity: 58, voltage: 400, current: 250, share: 6, socMin: 10, socMax: 35 },
+        { brand: 'Chevrolet Bolt EV', capacity: 65, voltage: 350, current: 150, share: 5, socMin: 10, socMax: 30 },
+        { brand: 'Renault Zoe E-Tech', capacity: 52, voltage: 400, current: 125, share: 5, socMin: 12, socMax: 40 },
+        { brand: 'Mercedes-Benz EQS 450', capacity: 107.8, voltage: 400, current: 500, share: 3, socMin: 8, socMax: 25 },
+        { brand: 'Peugeot e-208', capacity: 50, voltage: 400, current: 250, share: 4, socMin: 10, socMax: 35 },
+        { brand: 'Polestar 2 LR', capacity: 78, voltage: 400, current: 375, share: 4, socMin: 8, socMax: 30 },
+        { brand: 'Ford Mustang Mach-E', capacity: 88, voltage: 400, current: 375, share: 4, socMin: 10, socMax: 30 },
+        { brand: 'Tesla Model S Plaid', capacity: 100, voltage: 400, current: 250, share: 2, socMin: 5, socMax: 20 },
+        { brand: 'Audi e-tron GT', capacity: 93.4, voltage: 800, current: 330, share: 1, socMin: 5, socMax: 20 }
     ];
 
     // Simulation Time and Speed State
