@@ -40,9 +40,12 @@ function updateCanvas() {
     
     fieldsList.innerHTML = '';
     
-    let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [] };
+    let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [], warningMessages: [] };
     
     if (appState.isSimulationMode) {
+        if (!appState.activeAutoRoutes || Object.keys(appState.activeAutoRoutes).length === 0) {
+            initializeSimulationRoutes();
+        }
         applyAutoConnections();
         simulationData = calculateSimulation(appState.fields);
     }
@@ -112,6 +115,7 @@ function updateCanvas() {
     
     if (appState.isSimulationMode) {
         renderPistolSummaries(simulationData);
+        
         const errorPanel = document.getElementById('simulation-errors');
         const errorContent = document.getElementById('error-list-content');
         if (errorPanel && errorContent) {
@@ -1786,7 +1790,7 @@ function applyRenumbering() {
 }
 
 function renderPistolSummaries(simulationData) {
-    const { pistolPowers, errorMessages } = simulationData;
+    const { pistolPowers, errorMessages, warningMessages } = simulationData;
     const list = document.getElementById('routing-summary');
     if (!list) return;
     list.innerHTML = '';
@@ -1959,38 +1963,166 @@ function renderInverterSimulationTable(simulationData) {
     }
 }
 
-/**
- * Automates contactor switching for checked pistols.
- * Excludes already claimed inverters from path searches.
- */
-function applyAutoConnections() {
-    if (!appState.autoClosedContactors) {
-        appState.autoClosedContactors = [];
+function getClaimedResourcesExcluding(excludePistolUid) {
+    const claimedInverters = new Set();
+    const claimedBuses = new Set();
+    
+    if (appState.activeAutoRoutes) {
+        for (let pUid in appState.activeAutoRoutes) {
+            if (pUid === excludePistolUid) continue;
+            const route = appState.activeAutoRoutes[pUid];
+            if (route.usedInverters) {
+                route.usedInverters.forEach(inv => claimedInverters.add(inv.uid));
+            }
+            if (route.usedBuses) {
+                route.usedBuses.forEach(bus => claimedBuses.add(bus));
+            }
+        }
     }
+    
+    return { claimedInverters, claimedBuses };
+}
 
-    // 1. Collect all auto-connected pistols
+function initializeSimulationRoutes() {
+    appState.activeAutoRoutes = {};
+    const claimedInverters = new Set();
+    const claimedBuses = new Set();
+
     const autoPistols = [];
     appState.fields.forEach(field => {
         for (let key in field.components) {
             const comp = field.components[key];
             if (comp.type === 'pistol') {
                 const uid = `${field.id}-${key}`;
-                if (!appState.pistolDemands[uid] || typeof appState.pistolDemands[uid] !== 'object') {
-                    const legacyVal = parseFloat(appState.pistolDemands[uid]) || 10;
-                    appState.pistolDemands[uid] = {
-                        voltage: 500,
-                        current: (legacyVal * 1000) / 500,
-                        autoConnect: false
-                    };
-                }
-                if (appState.pistolDemands[uid].autoConnect) {
+                if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
                     autoPistols.push({ uid, field, key, comp });
                 }
             }
         }
     });
 
-    // 2. Open all contactors that were closed by auto-connect previously
+    // Sort pistols based on FIFO order in autoConnectOrder (FIFO priority for path stability)
+    autoPistols.sort((a, b) => {
+        const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
+        const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
+        if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
+
+    autoPistols.forEach(p => {
+        const settings = appState.pistolDemands[p.uid];
+        const u = settings.voltage || 0;
+        const i = settings.current || 0;
+        const demand = (u * i) / 1000;
+        if (demand <= 0) return;
+
+        const result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
+        
+        if (result && (result.reachable || (result.usedInverters && result.usedInverters.length > 0))) {
+            result.usedInverters.forEach(inv => claimedInverters.add(inv.uid));
+            if (result.usedBuses) {
+                result.usedBuses.forEach(bus => claimedBuses.add(bus));
+            }
+
+            appState.activeAutoRoutes[p.uid] = {
+                usedInverters: result.usedInverters,
+                usedContactors: result.usedContactors,
+                usedBuses: result.usedBuses ? Array.from(result.usedBuses) : [],
+                pathSegments: result.pathSegments ? Array.from(result.pathSegments) : [],
+                reachable: result.reachable
+            };
+        }
+    });
+}
+
+function updateRouteForPistol(uid) {
+    if (!appState.activeAutoRoutes) appState.activeAutoRoutes = {};
+    
+    const settings = appState.pistolDemands[uid];
+    if (!settings || !settings.autoConnect) {
+        delete appState.activeAutoRoutes[uid];
+        return;
+    }
+
+    const u = settings.voltage || 0;
+    const i = settings.current || 0;
+    let demand = (u * i) / 1000;
+    if (settings.limit !== undefined) {
+        demand = settings.limit;
+    }
+    if (demand <= 0) {
+        delete appState.activeAutoRoutes[uid];
+        return;
+    }
+
+    const { claimedInverters, claimedBuses } = getClaimedResourcesExcluding(uid);
+    const result = findOptimalPath(appState.fields, uid, demand, claimedInverters, null, claimedBuses);
+
+    if (result && (result.reachable || (result.usedInverters && result.usedInverters.length > 0))) {
+        appState.activeAutoRoutes[uid] = {
+            usedInverters: result.usedInverters,
+            usedContactors: result.usedContactors,
+            usedBuses: result.usedBuses ? Array.from(result.usedBuses) : [],
+            pathSegments: result.pathSegments ? Array.from(result.pathSegments) : [],
+            reachable: result.reachable
+        };
+    } else {
+        delete appState.activeAutoRoutes[uid];
+    }
+}
+
+function recalculateOrangeRoutes() {
+    if (!appState.activeAutoRoutes) return;
+    
+    const orangePistols = [];
+    for (let pUid in appState.activeAutoRoutes) {
+        if (!appState.activeAutoRoutes[pUid].reachable) {
+            orangePistols.push(pUid);
+        }
+    }
+
+    orangePistols.forEach(orangeUid => {
+        const { claimedInverters, claimedBuses } = getClaimedResourcesExcluding(orangeUid);
+        
+        const settings = appState.pistolDemands[orangeUid];
+        const u = settings.voltage || 0;
+        const i = settings.current || 0;
+        const demand = (u * i) / 1000;
+        if (demand <= 0) return;
+        
+        const result = findOptimalPath(appState.fields, orangeUid, demand, claimedInverters, null, claimedBuses);
+        
+        if (result && (result.reachable || (result.usedInverters && result.usedInverters.length > 0))) {
+            let newPower = 0;
+            result.usedInverters.forEach(inv => newPower += inv.power);
+            
+            let oldPower = 0;
+            appState.activeAutoRoutes[orangeUid].usedInverters.forEach(inv => oldPower += inv.power);
+            
+            if (newPower > oldPower || result.reachable) {
+                appState.activeAutoRoutes[orangeUid] = {
+                    usedInverters: result.usedInverters,
+                    usedContactors: result.usedContactors,
+                    usedBuses: result.usedBuses ? Array.from(result.usedBuses) : [],
+                    pathSegments: result.pathSegments ? Array.from(result.pathSegments) : [],
+                    reachable: result.reachable
+                };
+            }
+        }
+    });
+}
+
+function applyAutoConnections() {
+    if (!appState.activeAutoRoutes) {
+        appState.activeAutoRoutes = {};
+    }
+    if (!appState.autoClosedContactors) {
+        appState.autoClosedContactors = [];
+    }
+
+    // Open all contactors that were closed by auto-connect previously
     appState.autoClosedContactors.forEach(ctcKey => {
         const parts = ctcKey.split('-');
         const fId = parseInt(parts[0]);
@@ -2006,151 +2138,23 @@ function applyAutoConnections() {
     });
     appState.autoClosedContactors = [];
 
-    // 3. Run pathfinding for each auto-connected pistol sequentially
-    const claimedInverters = new Set();
-    const claimedBuses = new Set();
-    
-    // Sort pistols based on their order in autoConnectOrder (FIFO priority for path stability)
-    autoPistols.sort((a, b) => {
-        if (a.uid === appState.lastModifiedPistolUid && b.uid !== appState.lastModifiedPistolUid) return 1;
-        if (b.uid === appState.lastModifiedPistolUid && a.uid !== appState.lastModifiedPistolUid) return -1;
-        
-        const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
-        const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
-        if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
-        if (idxA === -1) return 1;
-        if (idxB === -1) return -1;
-        return idxA - idxB;
-    });
-
-    if (!appState.pistolToInverterAffinity) {
-        appState.pistolToInverterAffinity = {};
-    }
-
+    appState.routingWarnings = [];
     appState.routingErrors = [];
 
-    autoPistols.forEach(p => {
-        const settings = appState.pistolDemands[p.uid];
-        const u = settings.voltage || 0;
-        const i = settings.current || 0;
-        const demand = (u * i) / 1000;
+    // Apply each calculated active route
+    for (let pUid in appState.activeAutoRoutes) {
+        const route = appState.activeAutoRoutes[pUid];
         
-        if (demand <= 0) return;
-        
-        const pName = p.comp.name || `Пистолет ${p.key}`;
-        const sheetNum = appState.fields.indexOf(p.field) + 1;
-
-        let result = null;
-        let isPartial = false;
-        let partialPower = 0;
-
-        const affinityInvs = appState.pistolToInverterAffinity[p.uid] || [];
-        const K = affinityInvs.length;
-
-        if (K > 0) {
-            // Find total affinity power currently in the affinity list
-            let affinityPower = 0;
-            const allowed = new Set();
-            affinityInvs.forEach(invUid => {
-                const parts = invUid.split('-');
-                const fId = parseInt(parts[0]);
-                const r = parseInt(parts[1]);
-                const c = parseInt(parts[2]);
-                const f = appState.fields.find(x => x.id === fId);
-                if (f) {
-                    const comp = f.components[`${r}-${c}`];
-                    if (comp) {
-                        affinityPower += getInverterPower(comp, fId, `${r}-${c}`);
-                        allowed.add(invUid);
-                    }
-                }
-            });
-
-            if (affinityPower >= demand) {
-                // Case: affinity power is enough or demand decreased
-                let allUnclaimed = true;
-                allowed.forEach(invUid => {
-                    if (claimedInverters.has(invUid)) allUnclaimed = false;
-                });
-                if (allUnclaimed) {
-                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, allowed, claimedBuses);
-                }
-                if (!result || !result.reachable) {
-                    // Fallback to search all
-                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
-                }
-            } else {
-                // Case: demand increased (affinityPower < demand). We need additional inverters.
-                let allUnclaimed = true;
-                allowed.forEach(invUid => {
-                    if (claimedInverters.has(invUid)) allUnclaimed = false;
-                });
-                
-                let resultAffinity = null;
-                if (allUnclaimed) {
-                    // Grab all affinity inverters
-                    resultAffinity = findOptimalPath(appState.fields, p.uid, affinityPower, claimedInverters, allowed, claimedBuses);
-                }
-                
-                if (resultAffinity && resultAffinity.reachable) {
-                    // Temporarily claim affinity inverters to search for extra
-                    const tempClaimedInverters = new Set(claimedInverters);
-                    resultAffinity.usedInverters.forEach(inv => tempClaimedInverters.add(inv.uid));
-                    
-                    // Crucial: we do NOT add resultAffinity.usedBuses to claimedBuses during search for extra,
-                    // because the extra paths need to flow through this pistol's own starting row/col buses!
-                    const remainingPower = demand - affinityPower;
-                    const resultExtra = findOptimalPath(appState.fields, p.uid, remainingPower, tempClaimedInverters, null, claimedBuses);
-                    
-                    if (resultExtra.reachable) {
-                        // Combined success!
-                        result = {
-                            usedInverters: [...resultAffinity.usedInverters, ...resultExtra.usedInverters],
-                            usedContactors: [...resultAffinity.usedContactors, ...resultExtra.usedContactors],
-                            usedBuses: new Set([...resultAffinity.usedBuses, ...resultExtra.usedBuses]),
-                            reachable: true
-                        };
-                    } else {
-                        // Cannot find extra, but we must KEEP the affinity connected (partial connection)
-                        result = resultAffinity;
-                        isPartial = true;
-                        partialPower = affinityPower;
-                    }
-                } else {
-                    // If affinity itself is no longer reachable, search all from scratch
-                    result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
-                }
-            }
-        } else {
-            // New connection
-            result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
-        }
-
-        if (result && result.reachable) {
-            // Claim the inverters used
-            result.usedInverters.forEach(inv => {
-                claimedInverters.add(inv.uid);
-            });
-
-            // Claim all traversed buses
-            if (result.usedBuses) {
-                result.usedBuses.forEach(bus => {
-                    claimedBuses.add(bus);
-                });
-            }
-
-            // Update affinity to the newly connected inverters!
-            appState.pistolToInverterAffinity[p.uid] = result.usedInverters.map(inv => inv.uid);
-            
-            // Close all contactors along the path and add to autoClosedContactors list
-            result.usedContactors.forEach(ctcKey => {
+        // Close contactors along this path
+        if (route.usedContactors) {
+            route.usedContactors.forEach(ctcKey => {
                 const parts = ctcKey.split('-');
                 const fId = parseInt(parts[0]);
                 const r = parts[2];
                 const c = parts[3];
-                const f = appState.fields.find(x => x.id === fId);
-                if (f) {
-                    const ctc = f.contactors[`${r}-${c}`];
+                const field = appState.fields.find(f => f.id === fId);
+                if (field) {
+                    const ctc = field.contactors[`${r}-${c}`];
                     if (ctc) {
                         ctc.closed = true;
                         if (!appState.autoClosedContactors.includes(ctcKey)) {
@@ -2159,17 +2163,297 @@ function applyAutoConnections() {
                     }
                 }
             });
-
-            if (isPartial) {
-                const connectedP = partialPower;
-                appState.routingErrors.push(`Не удалось подключить всю мощность для ${pName} (Лист ${sheetNum})! Подключено ${connectedP} из ${demand} кВт.`);
-            }
-        } else {
-            // If completely unreachable, clear its affinity and report error
-            delete appState.pistolToInverterAffinity[p.uid];
-            appState.routingErrors.push(`Не удалось подключить всю мощность для ${pName} (Лист ${sheetNum})! Подключено 0 из ${demand} кВт.`);
         }
-    });
+
+        // Add warnings for display
+        if (!route.reachable) {
+            const parts = pUid.split('-');
+            const fId = parseInt(parts[0]);
+            const key = `${parts[1]}-${parts[2]}`;
+            const field = appState.fields.find(f => f.id === fId);
+            const comp = field ? field.components[key] : null;
+            const pName = comp ? comp.name : `Пистолет ${key}`;
+            const sheetNum = appState.fields.indexOf(field) + 1;
+            
+            let connectedP = 0;
+            if (route.usedInverters) {
+                route.usedInverters.forEach(inv => connectedP += inv.power);
+            }
+            const demandNum = getPistolDemand(fId, key);
+
+            appState.routingWarnings.push(`Не удалось подключить всю мощность для ${pName} (Лист ${sheetNum})! Подключено ${connectedP} из ${demandNum} кВт.`);
+        }
+    }
+}
+
+window.closeConflictDialog = function() {
+    const dialog = document.getElementById('conflict-dialog');
+    if (dialog) dialog.style.display = 'none';
+};
+
+window.triggerConflictResolution = function(pUid) {
+    console.log('[Conflict] Triggered for:', pUid);
+    const dialog = document.getElementById('conflict-dialog');
+    if (dialog && dialog.style.display && dialog.style.display !== 'none') {
+        console.log('[Conflict] Exit: conflict dialog is already open');
+        return;
+    }
+    if (!appState.isSimulationMode) {
+        console.log('[Conflict] Exit: not in simulation mode');
+        return;
+    }
+    
+    const settings = appState.pistolDemands[pUid];
+    if (!settings || !settings.autoConnect) {
+        console.log('[Conflict] Exit: no settings or autoConnect is false');
+        return;
+    }
+
+    // Check if the route is actually red (pActual <= 0.01)
+    const route = appState.activeAutoRoutes[pUid];
+    const pActual = route && route.usedInverters ? route.usedInverters.reduce((sum, inv) => sum + inv.power, 0) : 0;
+    console.log('[Conflict] pActual:', pActual);
+    if (pActual > 0.01) {
+        console.log('[Conflict] Exit: pActual > 0.01 (not red)');
+        return;
+    }
+
+    const partsTarget = pUid.split('-');
+    const fIdTarget = parseInt(partsTarget[0]);
+    const keyTarget = `${partsTarget[1]}-${partsTarget[2]}`;
+    const fieldTarget = appState.fields.find(f => f.id === fIdTarget);
+    const compTarget = fieldTarget ? fieldTarget.components[keyTarget] : null;
+    const targetName = compTarget ? compTarget.name : `Пистолет ${keyTarget}`;
+    const targetDemand = getPistolDemand(fIdTarget, keyTarget);
+
+    // Find all structurally reachable inverters and paths by setting demand very high (999999 kW)
+    const reachResult = findOptimalPath(appState.fields, pUid, 999999, new Set(), null, new Set());
+    if (!reachResult || !reachResult.usedInverters || reachResult.usedInverters.length === 0) {
+        console.log('[Conflict] Exit: no structurally reachable inverters found');
+        return;
+    }
+    console.log('[Conflict] Reachable inverters:', reachResult.usedInverters);
+
+    const reachableBuses = reachResult.usedBuses ? Array.from(reachResult.usedBuses) : [];
+    const reachableRows = reachableBuses.filter(bus => bus.includes('-row-'));
+
+    // Count how many reachable row-buses are occupied by each other active route
+    const conflicts = {};
+
+    for (let otherUid in appState.activeAutoRoutes) {
+        if (otherUid === pUid) continue;
+        const otherRoute = appState.activeAutoRoutes[otherUid];
+        
+        let occupiedCount = 0;
+        const overlappingInvs = [];
+
+        reachableRows.forEach(rowBus => {
+            const hasRow = otherRoute.usedBuses && (otherRoute.usedBuses.includes ? otherRoute.usedBuses.includes(rowBus) : otherRoute.usedBuses.has(rowBus));
+            if (hasRow) {
+                occupiedCount++;
+                reachResult.usedInverters.forEach(ri => {
+                    const parts = ri.uid.split('-');
+                    const riBusRow = `${parts[0]}-row-${parts[1]}`;
+                    if (riBusRow === rowBus) {
+                        if (!overlappingInvs.some(oi => oi.uid === ri.uid)) {
+                            overlappingInvs.push(ri);
+                        }
+                    }
+                });
+            }
+        });
+
+        // We only suggest conflicting pistols that occupy more than one reachable row-bus (repeats > 1)
+        if (occupiedCount > 1) {
+            conflicts[otherUid] = overlappingInvs;
+            if (conflicts[otherUid].length === 0) {
+                reachResult.usedInverters.forEach(inv => conflicts[otherUid].push(inv));
+            }
+        }
+    }
+
+    // Fallback: if no pistol repeats more than once, show any pistol occupying at least 1 reachable row
+    if (Object.keys(conflicts).length === 0) {
+        for (let otherUid in appState.activeAutoRoutes) {
+            if (otherUid === pUid) continue;
+            const otherRoute = appState.activeAutoRoutes[otherUid];
+            
+            let occupiedCount = 0;
+            const overlappingInvs = [];
+
+            reachableRows.forEach(rowBus => {
+                const hasRow = otherRoute.usedBuses && (otherRoute.usedBuses.includes ? otherRoute.usedBuses.includes(rowBus) : otherRoute.usedBuses.has(rowBus));
+                if (hasRow) {
+                    occupiedCount++;
+                    reachResult.usedInverters.forEach(ri => {
+                        const parts = ri.uid.split('-');
+                        const riBusRow = `${parts[0]}-row-${parts[1]}`;
+                        if (riBusRow === rowBus) {
+                            if (!overlappingInvs.some(oi => oi.uid === ri.uid)) {
+                                overlappingInvs.push(ri);
+                            }
+                        }
+                    });
+                }
+            });
+
+            if (occupiedCount >= 1) {
+                conflicts[otherUid] = overlappingInvs;
+                if (conflicts[otherUid].length === 0) {
+                    reachResult.usedInverters.forEach(inv => conflicts[otherUid].push(inv));
+                }
+            }
+        }
+    }
+
+    const conflictUids = Object.keys(conflicts);
+    console.log('[Conflict] Conflicting UIDs:', conflictUids);
+    console.log('[Conflict Detail] pUid:', pUid);
+    console.log('[Conflict Detail] targetDemand:', targetDemand);
+    console.log('[Conflict Detail] reachResult usedInverters:', reachResult.usedInverters);
+    console.log('[Conflict Detail] reachResult usedBuses:', Array.from(reachResult.usedBuses));
+    console.log('[Conflict Detail] activeAutoRoutes:\n' + JSON.stringify(Object.keys(appState.activeAutoRoutes).map(k => ({
+        uid: k,
+        usedInverters: appState.activeAutoRoutes[k].usedInverters ? appState.activeAutoRoutes[k].usedInverters.map(i => i.uid) : [],
+        usedBuses: appState.activeAutoRoutes[k].usedBuses ? Array.from(appState.activeAutoRoutes[k].usedBuses) : []
+    })), null, 2));
+    console.log('[Conflict Detail] computed conflicts:', conflicts);
+
+    if (conflictUids.length === 0) {
+        console.log('[Conflict] Exit: no conflicts found');
+        return;
+    }
+
+    // Populate modal text
+    const dialogTitle = document.getElementById('conflict-dialog-title');
+    const dialogDesc = document.getElementById('conflict-dialog-desc');
+    const optionsContainer = document.getElementById('conflict-options-container');
+
+    if (dialogTitle && dialogDesc && optionsContainer) {
+        dialogTitle.innerText = `Конфликт подключения: ${targetName}`;
+        dialogDesc.innerText = `Для ${targetName} не удалось подключить всю необходимую мощность, так как доступные инверторы заняты другими пистолетами. Выберите действие для освобождения мощности:`;
+        
+        optionsContainer.innerHTML = '';
+
+        conflictUids.forEach(otherUid => {
+            const partsOther = otherUid.split('-');
+            const fIdOther = parseInt(partsOther[0]);
+            const keyOther = `${partsOther[1]}-${partsOther[2]}`;
+            const fieldOther = appState.fields.find(f => f.id === fIdOther);
+            const compOther = fieldOther ? fieldOther.components[keyOther] : null;
+            const otherName = compOther ? compOther.name : `Пистолет ${keyOther}`;
+
+            const invs = conflicts[otherUid];
+            const releasedPower = invs.reduce((sum, inv) => sum + inv.power, 0);
+            const demandNum = getPistolDemand(fIdOther, keyOther);
+
+            // Option 2: Give priority & optional power splitting
+            const canSplit = (targetDemand >= 50 || demandNum >= 50);
+            
+            const optPriority = document.createElement('div');
+            optPriority.className = 'conflict-option-card';
+            optPriority.style.display = 'flex';
+            optPriority.style.flexDirection = 'column';
+            optPriority.style.gap = '8px';
+            optPriority.style.cursor = 'default'; // Let buttons handle clicks if user hovers them
+            
+            let splitHTML = '';
+            if (canSplit) {
+                splitHTML = `
+                    <div style="margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                        <span style="font-size: 11px; color: var(--text-muted);">Поделиться мощностью (${targetName} / ${otherName}):</span>
+                        <button class="split-btn" data-pct="25" style="padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.borderColor='var(--text-muted)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='var(--border)'">25% / 75%</button>
+                        <button class="split-btn" data-pct="50" style="padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.borderColor='var(--text-muted)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='var(--border)'">50% / 50%</button>
+                        <button class="split-btn" data-pct="75" style="padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.borderColor='var(--text-muted)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='var(--border)'">75% / 25%</button>
+                        <button class="split-btn" data-pct="100" style="padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--primary); background: rgba(0,255,170,0.1); color: var(--primary); cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">100% (Приоритет)</button>
+                    </div>
+                `;
+            }
+
+            optPriority.innerHTML = `
+                <div style="cursor: pointer;" class="priority-header-click">
+                    <div style="font-weight: 700; font-size: 13px; color: var(--text-main);">Дать приоритет для ${targetName} перед ${otherName}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${targetName} займет инверторы (${invs.map(i => i.name).join(', ')}) первым, отключив от них ${otherName}. Запрос мощности для ${otherName} останется прежним (${Math.round(demandNum)} кВт).</div>
+                </div>
+                ${splitHTML}
+            `;
+
+            const applyPriorityWithSplit = (pct) => {
+                // 1. Temporarily remove the conflicting pistol (P1) from active routes so it doesn't block P2's new search
+                if (appState.activeAutoRoutes) {
+                    delete appState.activeAutoRoutes[otherUid];
+                }
+
+                // 2. If split percentage is < 100, set the demand limits (without modifying original request settings)
+                const targetSet = appState.pistolDemands[pUid];
+                const otherSet = appState.pistolDemands[otherUid];
+                if (pct < 100) {
+                    const shareTarget = releasedPower * (pct / 100);
+                    const shareOther = releasedPower * ((100 - pct) / 100);
+                    
+                    const newTargetDemand = Math.max(10, Math.round(Math.min(targetDemand, shareTarget) / 10) * 10);
+                    const newOtherDemand = Math.max(10, Math.round(Math.min(demandNum, shareOther) / 10) * 10);
+
+                    if (targetSet) targetSet.limit = newTargetDemand;
+                    if (otherSet) otherSet.limit = newOtherDemand;
+                } else {
+                    if (targetSet) delete targetSet.limit;
+                    if (otherSet) delete otherSet.limit;
+                }
+
+                // 3. Adjust autoConnectOrder priority lists
+                if (!appState.autoConnectOrder) {
+                    appState.autoConnectOrder = [];
+                }
+                if (!appState.autoConnectOrder.includes(pUid)) {
+                    appState.autoConnectOrder.push(pUid);
+                }
+                if (!appState.autoConnectOrder.includes(otherUid)) {
+                    appState.autoConnectOrder.push(otherUid);
+                }
+                
+                // Move pUid before otherUid in autoConnectOrder
+                const arr = appState.autoConnectOrder;
+                const idxTarget = arr.indexOf(pUid);
+                const idxOther = arr.indexOf(otherUid);
+                if (idxTarget !== -1 && idxOther !== -1 && idxTarget > idxOther) {
+                    arr.splice(idxTarget, 1);
+                    const newIdxOther = arr.indexOf(otherUid);
+                    arr.splice(newIdxOther, 0, pUid);
+                }
+
+                // 4. Recalculate routes cleanly
+                updateRouteForPistol(pUid);
+                updateRouteForPistol(otherUid);
+
+                updateCanvas();
+                closeConflictDialog();
+            };
+
+            // Bind click handlers
+            const headerClick = optPriority.querySelector('.priority-header-click');
+            if (headerClick) {
+                headerClick.onclick = () => applyPriorityWithSplit(100);
+            }
+
+            if (canSplit) {
+                const btns = optPriority.querySelectorAll('.split-btn');
+                btns.forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        const pct = parseInt(btn.getAttribute('data-pct'));
+                        applyPriorityWithSplit(pct);
+                    };
+                });
+            }
+
+            optionsContainer.appendChild(optPriority);
+        });
+
+        // Show modal
+        const dialogBox = document.getElementById('conflict-dialog');
+        if (dialogBox) dialogBox.style.display = 'flex';
+    }
 }
 
 /**
@@ -2193,6 +2477,7 @@ function renderPistolDemandTable(simulationData) {
                         <th style="text-align:center; padding:4px;">U, В</th>
                         <th style="text-align:center; padding:4px;">I, А</th>
                         <th style="text-align:center; padding:4px;">Р, кВт</th>
+                        <th style="text-align:center; padding:4px; white-space:nowrap;">Факт, кВт</th>
                         <th style="text-align:center; padding:4px;">Инв.</th>
                         <th style="text-align:center; padding:4px;">Авто</th>
                         <th></th>
@@ -2304,8 +2589,19 @@ function renderPistolDemandTable(simulationData) {
                 : null;
 
             const pActual = simulationData.pistolPowers[uid] || 0;
-            const isMet = pActual >= demandNum && demandNum > 0;
-            const statusIcon = isMet ? '<span style="color:#00ff88; margin-right:4px;">✅</span>' : '<span style="color:#ffaa00; margin-right:4px;">🟠</span>';
+            const isMet = pActual >= demandNum - 0.01 && demandNum > 0;
+            
+            let statusColor = '#8a99ad'; // Default gray when !settings.autoConnect
+            if (settings.autoConnect) {
+                if (pActual >= demandNum - 0.01) {
+                    statusColor = '#00ffaa'; // Green
+                } else if (pActual > 0.01) {
+                    statusColor = '#ff9f1c'; // Orange
+                } else {
+                    statusColor = '#ff4a6b'; // Red
+                }
+            }
+            const statusIcon = `<span style="color:${statusColor}; margin-right:6px; font-size:14px; vertical-align:middle; line-height:1;">●</span>`;
 
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
@@ -2322,6 +2618,7 @@ function renderPistolDemandTable(simulationData) {
                     <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:40px;">
                 </td>
                 <td class="power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isPowerExcess ? 'var(--danger)' : 'var(--text-main)'};">${Math.round(demandNum * 10) / 10}</td>
+                <td class="actual-power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isMet ? 'var(--primary)' : 'var(--warning)'};">${Math.round(pActual * 10) / 10}</td>
                 <td class="demand-count-cell" style="text-align:center; padding:4px; ${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
                 <td style="text-align:center; padding:4px;">
                     <input type="checkbox" class="auto-connect-checkbox" data-uid="${uid}" ${settings.autoConnect ? 'checked' : ''} style="cursor:pointer; accent-color:var(--primary); width:14px; height:14px;">
@@ -2337,21 +2634,24 @@ function renderPistolDemandTable(simulationData) {
             `;
             tbody.appendChild(tr);
 
-            // Info row (shown when highlighted or warning)
+            // Info row (shown when highlighted, power excess, or warning)
             const infoTr = document.createElement('tr');
-            const showInfo = isHighlighted || isPowerExcess;
+            const isPartialWarning = settings.autoConnect && (pActual > 0.01 && pActual < demandNum - 0.01);
+            const showInfo = isHighlighted || isPowerExcess || isPartialWarning;
             infoTr.className = `demand-info-row${showInfo ? ' visible' : ''}`;
             
             let infoText = '';
             if (isPowerExcess) {
                 infoText = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${Math.round(totalInvPower * 10) / 10} кВт)</span>`;
+            } else if (isPartialWarning) {
+                infoText = `<span style="color: var(--warning)">⚠️ Подключено ${Math.round(pActual * 10) / 10} из ${Math.round(demandNum * 10) / 10} кВт</span>`;
             } else if (isHighlighted && lastResult && lastResult.reachable) {
                 infoText = 'Инверторы: ' + lastResult.usedInverters.map(i => i.name).join(', ');
             } else if (isHighlighted && lastResult && !lastResult.reachable) {
                 infoText = '<span style="color: var(--danger)">⚠️ Маршрут не найден</span>';
             }
             
-            infoTr.innerHTML = `<td colspan="7" class="demand-info-cell" style="padding:4px; font-size:10px; color:var(--text-muted);">${infoText}</td>`;
+            infoTr.innerHTML = `<td colspan="8" class="demand-info-cell" style="padding:4px; font-size:10px; color:var(--text-muted);">${infoText}</td>`;
             tbody.appendChild(infoTr);
 
             // Event bindings
@@ -2364,6 +2664,9 @@ function renderPistolDemandTable(simulationData) {
 
             const recalculateRow = () => {
                 appState.lastModifiedPistolUid = uid;
+                if (appState.pistolDemands[uid]) {
+                    delete appState.pistolDemands[uid].limit;
+                }
                 let v = parseFloat(uInput.value) || 0;
                 if (v !== 0) {
                     if (v < 200) v = 200;
@@ -2400,6 +2703,12 @@ function renderPistolDemandTable(simulationData) {
                 cntCell.style.color = excess ? 'var(--danger)' : '';
                 powerCell.style.color = excess ? 'var(--danger)' : '';
 
+                if (appState.pistolDemands[uid].autoConnect) {
+                    updateRouteForPistol(uid);
+                    recalculateOrangeRoutes();
+                    triggerConflictResolution(uid);
+                }
+
                 if (excess) {
                     infoTr.classList.add('visible');
                     infoCell.innerHTML = `<span style="color: var(--danger)">⚠️ Превышает макс. мощность сети (${Math.round(totalInvPower * 10) / 10} кВт)</span>`;
@@ -2432,8 +2741,14 @@ function renderPistolDemandTable(simulationData) {
                     if (!appState.autoConnectOrder.includes(uid)) {
                         appState.autoConnectOrder.push(uid);
                     }
+                    updateRouteForPistol(uid);
+                    triggerConflictResolution(uid);
                 } else {
                     appState.autoConnectOrder = appState.autoConnectOrder.filter(x => x !== uid);
+                    if (appState.activeAutoRoutes) {
+                        delete appState.activeAutoRoutes[uid];
+                    }
+                    recalculateOrangeRoutes();
                 }
                 updateCanvas();
             });
@@ -2448,7 +2763,7 @@ function renderPistolDemandTable(simulationData) {
 
     if (pistolCount === 0) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="7" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
+        tr.innerHTML = `<td colspan="8" style="color: var(--text-muted); font-size: 11px; padding: 8px 4px; text-align: center;">Нет пистолетов на схеме</td>`;
         tbody.appendChild(tr);
     }
 }
@@ -2570,6 +2885,19 @@ window.highlightOptimalPath = function(pistolUid) {
     // Toggle off if same pistol is already highlighted
     if (appState.optimalPathHighlight && appState.optimalPathHighlight.pistolUid === pistolUid) {
         appState.optimalPathHighlight = null;
+        updateCanvas();
+        return;
+    }
+
+    // Direct mapping in simulation mode using persistent routes
+    if (appState.isSimulationMode && appState.activeAutoRoutes && appState.activeAutoRoutes[pistolUid]) {
+        const route = appState.activeAutoRoutes[pistolUid];
+        appState.optimalPathHighlight = {
+            pistolUid,
+            pathSegments: new Set(route.pathSegments || []),
+            usedInverters: route.usedInverters || [],
+            reachable: route.reachable
+        };
         updateCanvas();
         return;
     }
@@ -2794,6 +3122,9 @@ window.setMode = function(isSim) {
     appState.isSimulationMode = isSim;
     if (!isSim) {
         appState.optimalPathHighlight = null;
+        appState.activeAutoRoutes = {};
+    } else {
+        initializeSimulationRoutes();
     }
     document.getElementById('mode-btn-design')?.classList.toggle('active', !isSim);
     document.getElementById('mode-btn-sim')?.classList.toggle('active', isSim);
@@ -2898,4 +3229,50 @@ window.addEventListener('beforeunload', function (e) {
 document.addEventListener('DOMContentLoaded', () => {
     saveHistoryState(appState);
     updateCanvas();
+
+    // Sidebar Resizer logic
+    const resizer = document.getElementById('sidebar-resizer');
+    const sidebar = document.getElementById('sidebar-panel');
+    const layout = document.getElementById('app-layout');
+    
+    if (resizer && sidebar && layout) {
+        let startX, startWidth;
+        
+        resizer.addEventListener('mousedown', initDrag, false);
+        
+        function initDrag(e) {
+            startX = e.clientX;
+            startWidth = parseInt(document.defaultView.getComputedStyle(sidebar).width, 10);
+            resizer.classList.add('dragging');
+            
+            document.documentElement.addEventListener('mousemove', doDrag, false);
+            document.documentElement.addEventListener('mouseup', stopDrag, false);
+            
+            // Prevent text selection during drag
+            e.preventDefault();
+        }
+        
+        function doDrag(e) {
+            // Check if sidebar layout is right-aligned
+            const isRight = layout.classList.contains('layout-right');
+            let newWidth;
+            if (isRight) {
+                newWidth = startWidth - (e.clientX - startX);
+            } else {
+                newWidth = startWidth + (e.clientX - startX);
+            }
+            
+            // Constrain width between 250px and 800px
+            if (newWidth < 250) newWidth = 250;
+            if (newWidth > 800) newWidth = 800;
+            
+            sidebar.style.width = newWidth + 'px';
+        }
+        
+        function stopDrag(e) {
+            resizer.classList.remove('dragging');
+            document.documentElement.removeEventListener('mousemove', doDrag, false);
+            document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        }
+    }
 });

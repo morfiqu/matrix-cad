@@ -1130,7 +1130,7 @@ function drawPlacedComponents(field, svg, simulationData, state) {
             pTxt.setAttribute("font-size", "8px");
             pTxt.setAttribute("font-weight", "bold");
             pTxt.setAttribute("pointer-events", "none");
-            pTxt.textContent = `${pPower} кВт`;
+            pTxt.textContent = `${Math.round(pPower * 10) / 10} кВт`;
             svg.appendChild(pTxt);
         }
     }

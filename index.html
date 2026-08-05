@@ -149,6 +149,9 @@
 
         </div>
 
+        <!-- Sidebar Resizer Handle -->
+        <div id="sidebar-resizer" class="resizer"></div>
+
         <!-- Drawing Canvas Area -->
         <div class="workspace" id="workspace-canvas">
             <div id="fields-list" style="display: flex; flex-direction: column; gap: 40px; width: 100%;"></div>
@@ -211,6 +214,22 @@
             <div style="display: flex; gap: 12px; margin-top: 10px;">
                 <button class="btn active" onclick="applyRenumbering()">Подтвердить</button>
                 <button class="btn" onclick="closeRenumberDialog()">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conflict Resolution Modal -->
+    <div class="dialog-overlay" id="conflict-dialog" style="display: none;">
+        <div class="dialog-box" style="width: 440px; max-height: 85vh; overflow-y: auto;">
+            <h3 class="dialog-title" id="conflict-dialog-title" style="margin-bottom: 8px; color: var(--warning);">Конфликт автоподключения</h3>
+            <p id="conflict-dialog-desc" style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.4;"></p>
+            
+            <div id="conflict-options-container" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+                <!-- Conflict options will be dynamically inserted here -->
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
+                <button class="btn" onclick="closeConflictDialog()">Отмена</button>
             </div>
         </div>
     </div>

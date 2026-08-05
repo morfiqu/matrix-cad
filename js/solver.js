@@ -29,6 +29,9 @@ function getPistolDemand(fieldId, key) {
     const uid = `${fieldId}-${key}`;
     if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[uid]) {
         const s = window.appState.pistolDemands[uid];
+        if (s.limit !== undefined) {
+            return s.limit;
+        }
         const v = s.voltage !== undefined ? s.voltage : 500;
         const i = s.current !== undefined ? s.current : 20;
         return (v * i) / 1000;
@@ -52,6 +55,7 @@ function calculateSimulation(fields) {
     const pistolPowers = {};
     const inverterToPaths = {};
     const errorMessages = [];
+    const warningMessages = [];
     const invReachesPistol = new Set();
     const invReachedCables = new Set();
     const flowDirections = {};
@@ -534,42 +538,67 @@ function calculateSimulation(fields) {
         });
     }
 
-    // Calculate nominal load drawn from each inverter
-    const inverterNominalLoads = {};
-    for (let invUid in inverterToPaths) {
-        inverterNominalLoads[invUid] = 0;
-    }
-
-    for (let pistolUid in pistolToInverters) {
-        const parts = pistolUid.split('-');
-        const pDemand = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
-        const invs = pistolToInverters[pistolUid];
-        const N = invs.length;
-        if (N > 0) {
-            const share = pDemand / N;
-            invs.forEach(invUid => {
-                inverterNominalLoads[invUid] = (inverterNominalLoads[invUid] || 0) + share;
-            });
-        }
-    }
-
-    // Calculate inverter real powers and scaling factor
-    const inverterRealPowers = {};
-    const inverterScales = {};
+    // Calculate actual power flows using capacity-proportional water filling
+    const S_ij = {};
+    const remainingCapacity = {};
     fields.forEach(f => {
         for (let k in f.components) {
             const comp = f.components[k];
             if (comp.type === 'inverter') {
                 const invUid = `${f.id}-${k}`;
-                const pConfig = getInverterPower(comp, f.id, k);
-                const lNom = inverterNominalLoads[invUid] || 0;
-                
-                let scale = 1;
-                if (lNom > 0) {
-                    scale = Math.min(1, pConfig / lNom);
-                }
-                inverterScales[invUid] = scale;
-                inverterRealPowers[invUid] = lNom * scale;
+                remainingCapacity[invUid] = getInverterPower(comp, f.id, k);
+            }
+        }
+    });
+
+    const remainingDemand = {};
+    for (let pistolUid in pistolToInverters) {
+        const parts = pistolUid.split('-');
+        remainingDemand[pistolUid] = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
+        
+        // Pre-initialize S_ij to 0
+        pistolToInverters[pistolUid].forEach(invUid => {
+            S_ij[`${invUid}->${pistolUid}`] = 0;
+        });
+    }
+
+    // Run 10 iterations of capacity-proportional water filling
+    for (let iter = 0; iter < 10; iter++) {
+        for (let pistolUid in pistolToInverters) {
+            const connectedInvs = pistolToInverters[pistolUid];
+            const demandToDistribute = remainingDemand[pistolUid];
+            if (demandToDistribute <= 0.01) continue;
+
+            let sumRemaining = 0;
+            connectedInvs.forEach(invUid => {
+                sumRemaining += remainingCapacity[invUid];
+            });
+
+            if (sumRemaining > 0) {
+                connectedInvs.forEach(invUid => {
+                    const cap = remainingCapacity[invUid];
+                    if (cap <= 0) return;
+                    
+                    const share = demandToDistribute * (cap / sumRemaining);
+                    const allocated = Math.min(cap, share);
+                    
+                    S_ij[`${invUid}->${pistolUid}`] += allocated;
+                    remainingCapacity[invUid] -= allocated;
+                    remainingDemand[pistolUid] -= allocated;
+                });
+            }
+        }
+    }
+
+    // Calculate inverter real powers
+    const inverterRealPowers = {};
+    fields.forEach(f => {
+        for (let k in f.components) {
+            const comp = f.components[k];
+            if (comp.type === 'inverter') {
+                const invUid = `${f.id}-${k}`;
+                const cap = getInverterPower(comp, f.id, k);
+                inverterRealPowers[invUid] = cap - (remainingCapacity[invUid] || 0);
             }
         }
     });
@@ -583,23 +612,25 @@ function calculateSimulation(fields) {
         }
     });
 
-    const S_ij = {};
     for (let pistolUid in pistolToInverters) {
         const parts = pistolUid.split('-');
-        const pDemand = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
-        const invs = pistolToInverters[pistolUid];
-        const N = invs.length;
-        
-        let pActual = 0;
-        if (N > 0) {
-            invs.forEach(invUid => {
-                const scale = inverterScales[invUid] || 1;
-                const share = (pDemand / N) * scale;
-                S_ij[`${invUid}->${pistolUid}`] = share;
-                pActual += share;
-            });
-        }
+        const demandTotal = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
+        const pActual = demandTotal - remainingDemand[pistolUid];
         pistolPowers[pistolUid] = pActual;
+
+        // Generate warning messages if any pistol doesn't receive its full requested power
+        if (demandTotal > 0 && pActual < demandTotal - 0.01) {
+            const fId = parseInt(parts[0]);
+            const key = `${parts[1]}-${parts[2]}`;
+            const field = fields.find(f => f.id === fId);
+            const comp = field ? field.components[key] : null;
+            const pName = comp ? comp.name : `Пистолет ${key}`;
+            const sheetNum = fields.indexOf(field) + 1;
+            const warningMsg = `Не удалось подключить всю мощность для ${pName} (Лист ${sheetNum})! Подключено ${Math.round(pActual * 10) / 10} из ${Math.round(demandTotal * 10) / 10} кВт.`;
+            if (!warningMessages.includes(warningMsg)) {
+                warningMessages.push(warningMsg);
+            }
+        }
     }
 
     // Now, accumulate contactor powers and currents from BFS paths
@@ -736,6 +767,14 @@ function calculateSimulation(fields) {
         }
     });
 
+    if (window.appState && window.appState.routingWarnings) {
+        window.appState.routingWarnings.forEach(wrn => {
+            if (!warningMessages.includes(wrn)) {
+                warningMessages.push(wrn);
+            }
+        });
+    }
+
     if (window.appState && window.appState.routingErrors) {
         window.appState.routingErrors.forEach(err => {
             if (!errorMessages.includes(err)) {
@@ -750,11 +789,13 @@ function calculateSimulation(fields) {
         contactorCurrents,
         pistolPowers,
         errorMessages,
+        warningMessages,
         flowDirections,
         invReachesPistol,
         inverterRealPowers,
         inverterRealVoltages,
-        inverterRealCurrents
+        inverterRealCurrents,
+        inverterToPaths
     };
 }
 
