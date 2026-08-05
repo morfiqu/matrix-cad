@@ -2285,7 +2285,19 @@ window.onCarDeparture = function(pistolUid) {
         orangePistols.sort((a, b) => getSimPistolSoC(a) - getSimPistolSoC(b));
 
         orangePistols.forEach(pUid => {
-            _routePistolFree(pUid); // Try to get a better route now that inverters are free
+            const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
+            const routed = _routePistolFree(pUid);
+            if (routed) {
+                const check = _runSimulationDryRun();
+                if (check.hasErrors) {
+                    // Rollback if this newly routed orange path introduces conflicts
+                    console.warn(`[Симуляция-Orange] Откатываем оранжевый пистолет ${pUid} из-за ошибки в симуляторе.`);
+                    appState.activeAutoRoutes = JSON.parse(backupRoutes);
+                    applyAutoConnections();
+                } else {
+                    console.log(`[Симуляция-Orange] Оранжевый пистолет ${pUid} занял свободные инверторы без ошибок.`);
+                }
+            }
         });
     }
 
@@ -2321,7 +2333,18 @@ function initializeSimulationRoutes() {
         return idxA - idxB;
     });
 
-    autoPistols.forEach(p => _routePistolFree(p.uid));
+    autoPistols.forEach(p => {
+        const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
+        const routed = _routePistolFree(p.uid);
+        if (routed) {
+            const check = _runSimulationDryRun();
+            if (check.hasErrors) {
+                console.warn(`[Инициализация-Conflict] Откатываем начальный путь для ${p.uid} из-за ошибок.`);
+                appState.activeAutoRoutes = JSON.parse(backupRoutes);
+                applyAutoConnections();
+            }
+        }
+    });
 }
 
 function updateRouteForPistol(uid) {
