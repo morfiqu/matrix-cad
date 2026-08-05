@@ -906,6 +906,15 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
             if (allowedInverters && !allowedInverters.has(invUid)) {
                 continue; // Exclude inverters not in allowed/affinity list
             }
+            // Extra check: if this inverter's ROW is already claimed as a bus by another
+            // pistol's parallel bundle, we must not connect to it — doing so would merge
+            // our pistol column onto that bus and create a multi-pistol short circuit.
+            if (claimedBuses) {
+                const invRowBusKey = `${current.fieldId}-row-${current.r}`;
+                if (claimedBuses.has(invRowBusKey)) {
+                    continue; // Row is occupied by another route's parallel bundle
+                }
+            }
             foundInverters.push({
                 uid: invUid,
                 name: cellComp.name,

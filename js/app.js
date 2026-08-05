@@ -2163,16 +2163,24 @@ function _runEnergyArbitration(newPistolUid) {
     donorRoute.usedInverters = donorRoute.usedInverters.filter(i => i.uid !== bestInvToRelease.uid);
 
     // Re-route donor with remaining inverters (constrained to its existing ones)
+    // Pass actual claimedBuses so the re-route doesn't accidentally merge onto another bus
     const donorParts = bestDonorUid.split('-');
     const donorDemand = getPistolDemand(donorParts[0], `${donorParts[1]}-${donorParts[2]}`);
     const allowedForDonor = new Set(donorRoute.usedInverters.map(i => i.uid));
     const { claimedInverters: claimedForDonor, claimedBuses: claimedBusesForDonor } = _getClaimedExcluding(bestDonorUid);
     allowedForDonor.forEach(uid => claimedForDonor.delete(uid)); // allow donor's remaining inverters
-    const donorResult = findOptimalPath(appState.fields, bestDonorUid, donorDemand, claimedForDonor, allowedForDonor, new Set());
+    const donorResult = findOptimalPath(appState.fields, bestDonorUid, donorDemand, claimedForDonor, allowedForDonor, claimedBusesForDonor);
     if (donorResult && donorResult.usedInverters && donorResult.usedInverters.length > 0) {
         _storeRoute(bestDonorUid, donorResult);
+    } else if (donorRoute.usedInverters.length > 0) {
+        // Re-route failed but donor still has inverters — keep old inverters, clear contactors
+        // so applyAutoConnections rebuilds them from scratch next frame
+        donorRoute.usedContactors = [];
+        donorRoute.usedBuses = [];
+        donorRoute.pathSegments = [];
+        donorRoute.reachable = false;
     }
-    // (if donor re-route fails we still leave them with whatever's left - no crash)
+    // (if donor re-route fails and has 0 inverters — give up, no crash)
 
     // Route the new pistol now that one inverter is free
     return _routePistolFree(newPistolUid);
