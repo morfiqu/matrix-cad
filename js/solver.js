@@ -27,6 +27,14 @@ function getInverterVoltage(fields, fId, r) {
 
 function getPistolDemand(fieldId, key) {
     const uid = `${fieldId}-${key}`;
+    if (window.workSimState && window.workSimState.isActiveSimRun) {
+        if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
+            const conn = window.workSimActiveConnections[uid];
+            if (conn.limit !== undefined) return conn.limit;
+            return (conn.car.voltage * conn.car.current) / 1000;
+        }
+        return 0; // No demand if empty
+    }
     if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[uid]) {
         const s = window.appState.pistolDemands[uid];
         if (s.limit !== undefined) {
@@ -41,6 +49,12 @@ function getPistolDemand(fieldId, key) {
 
 function getPistolVoltage(fieldId, key) {
     const uid = `${fieldId}-${key}`;
+    if (window.workSimState && window.workSimState.isActiveSimRun) {
+        if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
+            return window.workSimActiveConnections[uid].car.voltage;
+        }
+        return 500;
+    }
     if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[uid]) {
         const s = window.appState.pistolDemands[uid];
         return s.voltage !== undefined ? s.voltage : 500;

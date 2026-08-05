@@ -19,10 +19,15 @@
         trafficHours: 0,
         trafficMinutes: 5,
         trafficSeconds: 0,
-        trafficProbability: 80
+        trafficProbability: 80,
+        isActiveSimRun: false
     };
 
+    // Tracks current active simulation sessions on pistols
+    window.workSimActiveConnections = {};
+
     let simTickerInterval = null;
+    let lastTrafficCheckTime = 0;
 
     let currentDocks = {
         'work-sim-panel': 'floating',
@@ -505,8 +510,12 @@
         simTickerInterval = setInterval(() => {
             if (window.workSimState.isPlaying) {
                 const multiplier = window.workSimState.speeds[window.workSimState.speedIndex];
-                // 100ms interval -> 0.1 real seconds passed
-                window.workSimState.totalSeconds += 0.1 * multiplier;
+                const dt = 0.1 * multiplier;
+                window.workSimState.totalSeconds += dt;
+                
+                // Active Traffic Spawner check
+                checkTrafficSpawn();
+                
                 updateSimUI();
             }
         }, 100);
@@ -573,25 +582,22 @@
         const simData = window.lastSimulationData || { pistolPowers: {} };
         
         pistols.forEach(p => {
+            const activeSession = window.workSimActiveConnections[p.uid];
             const power = simData.pistolPowers[p.uid] || 0;
-            const isCharging = power > 0.01;
+            const isCharging = power > 0.01 && activeSession;
             
-            const statusCell = isCharging 
-                ? `<span style="color: var(--secondary); font-weight: bold; text-shadow: 0 0 6px rgba(255, 159, 28, 0.2);">⚡ Зарядка</span>` 
-                : `<span style="color: #00ff88; opacity: 0.85;">• Свободен</span>`;
-                
-            const carModel = isCharging 
-                ? (window.workSimCars[0] ? window.workSimCars[0].brand : 'Электромобиль')
-                : '—';
-                
-            const powerCell = isCharging 
-                ? `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>` 
-                : `<span style="color: var(--text-muted);">0 кВт</span>`;
-                
-            const socCell = isCharging 
-                ? `<span style="color: var(--primary); font-weight: bold;">35%</span>` 
-                : `<span style="color: var(--text-muted);">—</span>`;
-                
+            let statusCell = `<span style="color: #00ff88; opacity: 0.85;">• Свободен</span>`;
+            let carModel = '—';
+            let powerCell = `<span style="color: var(--text-muted);">0 кВт</span>`;
+            let socCell = `<span style="color: var(--text-muted);">—</span>`;
+            
+            if (activeSession) {
+                statusCell = `<span style="color: var(--secondary); font-weight: bold; text-shadow: 0 0 6px rgba(255, 159, 28, 0.2);">⚡ Зарядка</span>`;
+                carModel = activeSession.car.brand;
+                powerCell = `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>`;
+                socCell = `<span style="color: var(--primary); font-weight: bold;">${activeSession.currentSoC}%</span>`;
+            }
+            
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="font-weight: 500; color: var(--text-main); font-size: 10px;">${p.name}</td>
@@ -610,24 +616,110 @@
         }
     };
 
+    // Traffic spawn logic
+    function checkTrafficSpawn() {
+        const intervalSeconds = window.workSimState.trafficHours * 3600 +
+                                window.workSimState.trafficMinutes * 60 +
+                                window.workSimState.trafficSeconds;
+        
+        if (intervalSeconds <= 0) return;
+        
+        const elapsedSinceLastCheck = window.workSimState.totalSeconds - lastTrafficCheckTime;
+        if (elapsedSinceLastCheck >= intervalSeconds) {
+            lastTrafficCheckTime += intervalSeconds;
+            
+            const prob = window.workSimState.trafficProbability;
+            const rolled = Math.random() * 100;
+            if (rolled <= prob) {
+                spawnCarConnection();
+            }
+        }
+    }
+
+    function selectRandomCarByShare() {
+        const N = window.workSimCars.length;
+        if (N === 0) return null;
+        
+        const totalShare = getCarSharesSum();
+        if (totalShare <= 0) {
+            return window.workSimCars[Math.floor(Math.random() * N)];
+        }
+        
+        let rand = Math.random() * totalShare;
+        let cumulative = 0;
+        for (let i = 0; i < N; i++) {
+            cumulative += window.workSimCars[i].share || 0;
+            if (rand <= cumulative) {
+                return window.workSimCars[i];
+            }
+        }
+        return window.workSimCars[N - 1];
+    }
+
+    function spawnCarConnection() {
+        const emptyPistolUids = [];
+        if (window.appState && window.appState.fields) {
+            window.appState.fields.forEach(field => {
+                for (let k in field.components) {
+                    const comp = field.components[k];
+                    if (comp.type === 'pistol') {
+                        const uid = `${field.id}-${k}`;
+                        if (!window.workSimActiveConnections[uid]) {
+                            emptyPistolUids.push(uid);
+                        }
+                    }
+                }
+            });
+        }
+        
+        if (emptyPistolUids.length === 0) return; // No empty slots
+        
+        const car = selectRandomCarByShare();
+        if (!car) return;
+        
+        const randomPistolUid = emptyPistolUids[Math.floor(Math.random() * emptyPistolUids.length)];
+        
+        const socMin = car.socMin !== undefined ? car.socMin : 10;
+        const socMax = car.socMax !== undefined ? car.socMax : 50;
+        const initialSoc = Math.floor(Math.random() * (socMax - socMin + 1)) + socMin;
+        
+        window.workSimActiveConnections[randomPistolUid] = {
+            car: JSON.parse(JSON.stringify(car)),
+            currentSoC: initialSoc,
+            connectedAt: window.workSimState.totalSeconds
+        };
+        
+        console.log(`[Work Sim] Connected ${car.brand} to ${randomPistolUid} at ${initialSoc}% SoC`);
+        
+        if (window.updateCanvas) window.updateCanvas();
+    }
+
     // Window global APIs
     window.toggleWorkSimulationPanel = function() {
         const panel = document.getElementById('work-sim-panel');
         const dash = document.getElementById('work-sim-dash-panel');
+        const btn = document.getElementById('btn-work-sim');
         if (!panel || !dash) return;
         
-        if (panel.style.display === 'none') {
+        const isOpening = (panel.style.display === 'none');
+        window.workSimState.isActiveSimRun = isOpening;
+        
+        if (isOpening) {
             panel.style.display = 'flex';
             dash.style.display = 'flex';
+            if (btn) btn.classList.add('active');
             renderCarsTable();
             updateSimUI();
             startSimTicker();
         } else {
             panel.style.display = 'none';
             dash.style.display = 'none';
+            if (btn) btn.classList.remove('active');
             hideSnapPreview();
             stopSimTicker();
         }
+
+        if (window.updateCanvas) window.updateCanvas();
     };
 
     window.toggleSimPlay = function() {
@@ -644,15 +736,20 @@
     };
 
     window.cleanupWorkSimulation = function() {
+        window.workSimState.isActiveSimRun = false;
         window.workSimState.isPlaying = false;
         window.workSimState.totalSeconds = 0;
         window.workSimState.speedIndex = 0;
+        window.workSimActiveConnections = {};
+        lastTrafficCheckTime = 0;
         stopSimTicker();
         
         const panel = document.getElementById('work-sim-panel');
         const dash = document.getElementById('work-sim-dash-panel');
+        const btn = document.getElementById('btn-work-sim');
         if (panel) panel.style.display = 'none';
         if (dash) dash.style.display = 'none';
+        if (btn) btn.classList.remove('active');
         hideSnapPreview();
         updateSimUI();
     };

@@ -479,6 +479,9 @@ function handleCompContextMenu(e, fId, r, c, type, key) {
 function handleCtcMouseDown(e, fId, r, c, type, key, ctc) {
     e.stopPropagation();
     if (e.button !== 0) return;
+    if (window.workSimState && window.workSimState.isActiveSimRun) {
+        return; // Блокировка переключения во время активной симуляции
+    }
     if (appState.isSimulationMode) {
         ctc.closed = !ctc.closed;
         updateCanvas();

@@ -1223,3 +1223,25 @@ input[type=number] {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+
+/* ⚡ Симуляция работы Button active/inactive states */
+#btn-work-sim {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+
+#btn-work-sim:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    border-color: var(--text-muted);
+}
+
+#btn-work-sim.active {
+    background-color: #00ff88 !important;
+    border-color: #00ff88 !important;
+    color: #000000 !important;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+}
