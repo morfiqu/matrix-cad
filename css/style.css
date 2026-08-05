@@ -924,3 +924,184 @@ input[type=number] {
 .conflict-option-card:active {
     transform: translateY(0);
 }
+
+/* ==========================================================================
+   Work Simulation Panel Styles
+   ========================================================================== */
+.work-sim-panel {
+    position: absolute;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    z-index: 9990;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: 'Space Grotesk', sans-serif;
+    transition: width 0.2s ease, height 0.2s ease, top 0.2s ease, left 0.2s ease, bottom 0.2s ease, right 0.2s ease, border-radius 0.2s ease;
+}
+
+.work-sim-panel.floating {
+    border-radius: 12px;
+}
+
+.work-sim-panel.left {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 360px;
+    height: 100%;
+    border-left: none;
+    border-top: none;
+    border-bottom: none;
+    border-radius: 0;
+}
+
+.work-sim-panel.right {
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 360px;
+    height: 100%;
+    border-right: none;
+    border-top: none;
+    border-bottom: none;
+    border-radius: 0;
+}
+
+.work-sim-panel.bottom {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 250px;
+    width: 100%;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-radius: 0;
+}
+
+.work-sim-header {
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: grab;
+    user-select: none;
+}
+
+.work-sim-header:active {
+    cursor: grabbing;
+}
+
+.work-sim-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.work-sim-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.work-sim-btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+    transition: color 0.15s ease;
+    border-radius: 4px;
+}
+
+.work-sim-btn-icon:hover {
+    color: var(--danger);
+    background: rgba(255, 74, 107, 0.08);
+}
+
+.work-sim-content {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.work-sim-table-wrap {
+    flex-grow: 1;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.work-sim-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.work-sim-table th {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.01);
+}
+
+.work-sim-table td {
+    padding: 6px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    vertical-align: middle;
+}
+
+.work-sim-table tr:last-child td {
+    border-bottom: none;
+}
+
+.work-sim-input {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 6px;
+    outline: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+    box-sizing: border-box;
+}
+
+.work-sim-input:focus {
+    border-color: var(--primary);
+    background: rgba(0, 255, 170, 0.04);
+}
+
+.btn-remove-row {
+    background: none;
+    border: none;
+    color: rgba(255, 74, 107, 0.6);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    line-height: 1;
+}
+
+.btn-remove-row:hover {
+    color: var(--danger);
+    background: rgba(255, 74, 107, 0.1);
+}
+
+/* Force grabbing cursor globally during active panning */
+.panning-active, .panning-active * {
+    cursor: grabbing !important;
+}

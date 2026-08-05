@@ -44,6 +44,7 @@ function bindSVGDragSelection(field, svg, state) {
     }
     
     const handleMouseDown = (e) => {
+        if (e.button !== 0) return; // Only Left Mouse Button starts drag selection
         if (state.isSimulationMode) return;
         
         const currentTool = (window.appState && window.appState.activeTool) || state.activeTool || 'select';

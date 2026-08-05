@@ -38,6 +38,22 @@ function updateCanvas() {
     const fieldsList = document.getElementById('fields-list');
     if (!fieldsList) return;
     
+    // Save scroll positions
+    const workspace = document.getElementById('workspace-canvas');
+    const workspaceScrollLeft = workspace ? workspace.scrollLeft : 0;
+    const workspaceScrollTop = workspace ? workspace.scrollTop : 0;
+    
+    const savedScrolls = {};
+    appState.fields.forEach(field => {
+        const container = document.getElementById(`field-container-${field.id}`);
+        if (container) {
+            const wrapper = container.querySelector('.field-scroll-wrapper');
+            if (wrapper) {
+                savedScrolls[field.id] = wrapper.scrollLeft;
+            }
+        }
+    });
+    
     fieldsList.innerHTML = '';
     
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [], warningMessages: [] };
@@ -131,6 +147,23 @@ function updateCanvas() {
         const errorPanel = document.getElementById('simulation-errors');
         if (errorPanel) errorPanel.style.display = 'none';
     }
+
+    // Restore scroll positions
+    appState.fields.forEach(field => {
+        if (savedScrolls[field.id] !== undefined) {
+            const container = document.getElementById(`field-container-${field.id}`);
+            if (container) {
+                const wrapper = container.querySelector('.field-scroll-wrapper');
+                if (wrapper) {
+                    wrapper.scrollLeft = savedScrolls[field.id];
+                }
+            }
+        }
+    });
+    if (workspace) {
+        workspace.scrollLeft = workspaceScrollLeft;
+        workspace.scrollTop = workspaceScrollTop;
+    }
 }
 
 function setTool(tool) {
@@ -155,6 +188,7 @@ function setTool(tool) {
 }
 
 function handleCellMouseDown(e, fieldId, r, c) {
+    if (e.button !== 0) return;
     if (isPasteMode || appState.isPasteMode) {
         e.stopPropagation();
         e.preventDefault();
@@ -439,6 +473,7 @@ function handleCompContextMenu(e, fId, r, c, type, key) {
 
 function handleCtcMouseDown(e, fId, r, c, type, key, ctc) {
     e.stopPropagation();
+    if (e.button !== 0) return;
     if (appState.isSimulationMode) {
         ctc.closed = !ctc.closed;
         updateCanvas();
@@ -3123,11 +3158,22 @@ window.setMode = function(isSim) {
     if (!isSim) {
         appState.optimalPathHighlight = null;
         appState.activeAutoRoutes = {};
+        
+        // Hide work simulation panel when switching back to design mode
+        const panel = document.getElementById('work-sim-panel');
+        if (panel) panel.style.display = 'none';
+        const preview = document.getElementById('work-sim-snap-preview');
+        if (preview) preview.style.display = 'none';
     } else {
         initializeSimulationRoutes();
     }
     document.getElementById('mode-btn-design')?.classList.toggle('active', !isSim);
     document.getElementById('mode-btn-sim')?.classList.toggle('active', isSim);
+    
+    const btnWorkSim = document.getElementById('btn-work-sim');
+    if (btnWorkSim) {
+        btnWorkSim.style.display = isSim ? 'inline-block' : 'none';
+    }
     
     const toolbar = document.getElementById('sidebar-toolbar');
     const outputs = document.getElementById('sidebar-pistol-outputs');
@@ -3273,6 +3319,58 @@ document.addEventListener('DOMContentLoaded', () => {
             resizer.classList.remove('dragging');
             document.documentElement.removeEventListener('mousemove', doDrag, false);
             document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        }
+    }
+
+    // Workspace Panning Logic with Mouse Wheel (Middle Click)
+    const workspace = document.getElementById('workspace-canvas');
+    if (workspace) {
+        let isPanning = false;
+        let startX, startY;
+        let startScrollLeft, startScrollTop;
+        let activeScrollWrapper = null;
+        
+        workspace.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // Middle click (mouse wheel)
+                e.preventDefault(); // Stop default autoscroll bubble
+                isPanning = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                // Find closest scroll wrapper clicked
+                activeScrollWrapper = e.target.closest('.field-scroll-wrapper');
+                if (!activeScrollWrapper) {
+                    activeScrollWrapper = workspace.querySelector('.field-scroll-wrapper');
+                }
+                
+                startScrollLeft = activeScrollWrapper ? activeScrollWrapper.scrollLeft : 0;
+                startScrollTop = workspace.scrollTop;
+                workspace.classList.add('panning-active');
+                
+                window.addEventListener('mousemove', doPan);
+                window.addEventListener('mouseup', stopPan);
+            }
+        }, true);
+        
+        function doPan(e) {
+            if (!isPanning) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            if (activeScrollWrapper) {
+                activeScrollWrapper.scrollLeft = startScrollLeft - dx;
+            }
+            workspace.scrollTop = startScrollTop - dy;
+        }
+        
+        function stopPan() {
+            if (isPanning) {
+                isPanning = false;
+                workspace.classList.remove('panning-active');
+                activeScrollWrapper = null;
+                window.removeEventListener('mousemove', doPan);
+                window.removeEventListener('mouseup', stopPan);
+            }
         }
     }
 });
