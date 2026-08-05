@@ -824,9 +824,10 @@
         
         if (intervalSeconds <= 0) return;
         
-        const elapsedSinceLastCheck = window.workSimState.totalSeconds - lastTrafficCheckTime;
-        if (elapsedSinceLastCheck >= intervalSeconds) {
+        let limit = 1000; // safety brake to prevent infinite loops under extreme settings
+        while (window.workSimState.totalSeconds - lastTrafficCheckTime >= intervalSeconds && limit > 0) {
             lastTrafficCheckTime += intervalSeconds;
+            limit--;
             
             const prob = window.workSimState.trafficProbability;
             const rolled = Math.random() * 100;

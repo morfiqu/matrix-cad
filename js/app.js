@@ -2098,14 +2098,14 @@ function getClaimedResourcesExcluding(excludePistolUid) {
         }
     }
     
-    // Add column buses of ALL other active/waiting pistols (autoConnect === true)
+    // Add column buses of ALL other pistols on the grid (prevents any transit through other pistol columns)
     if (appState && appState.fields) {
         appState.fields.forEach(field => {
             for (let key in field.components) {
                 const comp = field.components[key];
                 if (comp.type === 'pistol') {
                     const uid = `${field.id}-${key}`;
-                    if (uid !== excludePistolUid && appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                    if (uid !== excludePistolUid) {
                         const parts = key.split('-');
                         const colNum = parseInt(parts[1]);
                         claimedBuses.add(`${field.id}-col-${colNum}`);
@@ -2148,14 +2148,14 @@ function _getClaimedExcluding(excludeUid) {
         if (r.usedBuses)     r.usedBuses.forEach(b => claimedBuses.add(b));
     }
     
-    // Add column buses of ALL other active/waiting pistols (autoConnect === true)
+    // Add column buses of ALL other pistols on the grid (prevents any transit through other pistol columns)
     if (appState && appState.fields) {
         appState.fields.forEach(field => {
             for (let key in field.components) {
                 const comp = field.components[key];
                 if (comp.type === 'pistol') {
                     const uid = `${field.id}-${key}`;
-                    if (uid !== excludeUid && appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                    if (uid !== excludeUid) {
                         const parts = key.split('-');
                         const colNum = parseInt(parts[1]);
                         claimedBuses.add(`${field.id}-col-${colNum}`);
@@ -3289,6 +3289,23 @@ function renderPistolDemandTable(simulationData) {
 function getClaimedInvertersForPistol(targetPistolUid, outClaimedBuses = null) {
     const claimed = new Set();
     const claimedBuses = new Set();
+    
+    // Add column buses of ALL other pistols on the grid (prevents any transit through other pistol columns)
+    if (appState && appState.fields) {
+        appState.fields.forEach(field => {
+            for (let key in field.components) {
+                const comp = field.components[key];
+                if (comp.type === 'pistol') {
+                    const uid = `${field.id}-${key}`;
+                    if (uid !== targetPistolUid) {
+                        const parts = key.split('-');
+                        const colNum = parseInt(parts[1]);
+                        claimedBuses.add(`${field.id}-col-${colNum}`);
+                    }
+                }
+            }
+        });
+    }
     
     const autoPistols = [];
     appState.fields.forEach(field => {
