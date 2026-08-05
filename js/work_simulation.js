@@ -747,17 +747,56 @@
             const activeSession = window.workSimActiveConnections[p.uid];
             const power = simData.pistolPowers[p.uid] || 0;
             
-            let statusCell = `<span style="color: #00ff88; opacity: 0.85;">• Свободен</span>`;
+            let statusColor = '#8a99ad';
+            let statusText = '• Свободен';
             let carModel = '—';
             let powerCell = `<span style="color: var(--text-muted);">0 кВт</span>`;
             let socCell = `<span style="color: var(--text-muted);">—</span>`;
             
             if (activeSession) {
-                statusCell = `<span style="color: var(--secondary); font-weight: bold; text-shadow: 0 0 6px rgba(255, 159, 28, 0.2);">⚡ Зарядка</span>`;
                 carModel = activeSession.car.brand;
                 powerCell = `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>`;
                 socCell = `<span style="color: var(--primary); font-weight: bold;">${activeSession.currentSoC.toFixed(1)}%</span>`;
+                
+                const parts = p.uid.split('-');
+                const fId = parseInt(parts[0]);
+                const key = `${parts[1]}-${parts[2]}`;
+                
+                let demandNum = 0;
+                if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[p.uid]) {
+                    const settings = window.appState.pistolDemands[p.uid];
+                    const u = settings.voltage || 0;
+                    const i = settings.current || 0;
+                    demandNum = (u * i) / 1000;
+                }
+                
+                let hasPistolError = false;
+                if (simData.errorMessages && window.appState && window.appState.fields) {
+                    const field = window.appState.fields.find(f => f.id === fId);
+                    const comp = field ? field.components[key] : null;
+                    const compName = comp ? comp.name : p.name;
+                    const pNameUpper = compName.trim().toUpperCase();
+                    hasPistolError = simData.errorMessages.some(err => err.trim().toUpperCase().includes(pNameUpper));
+                }
+                
+                if (hasPistolError) {
+                    statusColor = '#ff4a6b';
+                    statusText = '⚠️ Конфликт';
+                } else if (power >= demandNum - 0.01 && demandNum > 0) {
+                    statusColor = '#00ffaa';
+                    statusText = '⚡ Зарядка';
+                } else if (power > 0.01) {
+                    statusColor = '#ff9f1c';
+                    statusText = '⚡ Частично';
+                } else {
+                    statusColor = '#ffd166';
+                    statusText = '⏳ Ожидание';
+                }
+            } else {
+                statusColor = '#00ffaa';
             }
+            
+            const statusCell = `<span style="color: ${statusColor}; font-weight: bold; text-shadow: 0 0 6px ${statusColor}33;">${statusText}</span>`;
             
             const tr = document.createElement('tr');
             tr.innerHTML = `
