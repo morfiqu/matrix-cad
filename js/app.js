@@ -3159,11 +3159,10 @@ window.setMode = function(isSim) {
         appState.optimalPathHighlight = null;
         appState.activeAutoRoutes = {};
         
-        // Hide work simulation panel when switching back to design mode
-        const panel = document.getElementById('work-sim-panel');
-        if (panel) panel.style.display = 'none';
-        const preview = document.getElementById('work-sim-snap-preview');
-        if (preview) preview.style.display = 'none';
+        // Clean up work simulation and hide panels when switching back to design mode
+        if (window.cleanupWorkSimulation) {
+            window.cleanupWorkSimulation();
+        }
     } else {
         initializeSimulationRoutes();
     }
