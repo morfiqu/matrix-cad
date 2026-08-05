@@ -1042,8 +1042,18 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
         return { pathSegments: new Set(), usedInverters: [], usedContactors: [], usedBuses: new Set(), reachable: false };
     }
 
-    // Sort by path cost (fewest cost = closest preferred inverter)
-    foundInverters.sort((a, b) => a.cost - b.cost);
+    // Sort by path cost + hours penalty (prioritize inverters with fewer operating hours)
+    foundInverters.sort((a, b) => {
+        let hoursA = 0;
+        let hoursB = 0;
+        if (window.appState && window.appState.inverterSettings) {
+            if (window.appState.inverterSettings[a.uid]) hoursA = window.appState.inverterSettings[a.uid].hours || 0;
+            if (window.appState.inverterSettings[b.uid]) hoursB = window.appState.inverterSettings[b.uid].hours || 0;
+        }
+        const adjustedCostA = a.cost + hoursA * 1000;
+        const adjustedCostB = b.cost + hoursB * 1000;
+        return adjustedCostA - adjustedCostB;
+    });
 
     // Select closest inverters whose cumulative power satisfies targetPower
     const selected = [];

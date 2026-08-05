@@ -1927,22 +1927,6 @@ function renderInverterSimulationTable(simulationData) {
     if (!wrap) {
         wrap = document.createElement('div');
         wrap.id = 'inverter-simulation-wrap';
-        wrap.innerHTML = `
-            <div class="section-title" style="margin-top: 15px; margin-bottom: 8px;">🔋 Параметры инверторов</div>
-            <table id="inverter-simulation-table" style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:15px;">
-                <thead>
-                    <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); height:26px;">
-                        <th style="text-align:left; padding:4px;">Инвертор</th>
-                        <th style="text-align:center; padding:4px;">Макс, кВт</th>
-                        <th style="text-align:center; padding:4px;">U, В</th>
-                        <th style="text-align:center; padding:4px;">I, А</th>
-                        <th style="text-align:center; padding:4px;">Реал, кВт</th>
-                        <th style="text-align:center; padding:4px;">Вкл</th>
-                    </tr>
-                </thead>
-                <tbody id="inverter-simulation-tbody"></tbody>
-            </table>
-        `;
         
         // Insert before routing summary or at the end
         const routingSummary = document.getElementById('routing-summary');
@@ -1952,6 +1936,27 @@ function renderInverterSimulationTable(simulationData) {
             outputsPanel.appendChild(wrap);
         }
     }
+
+    let isSimRun = (window.workSimState && window.workSimState.isActiveSimRun);
+
+    wrap.innerHTML = `
+        <div class="section-title" style="margin-top: 15px; margin-bottom: 8px;">🔋 Параметры инверторов</div>
+        <table id="inverter-simulation-table" style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:8px;">
+            <thead>
+                <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); height:26px;">
+                    <th style="text-align:left; padding:4px;">Инвертор</th>
+                    ${isSimRun ? '<th style="text-align:center; padding:4px;">Моточасы</th>' : ''}
+                    <th style="text-align:center; padding:4px;">Макс, кВт</th>
+                    <th style="text-align:center; padding:4px;">U, В</th>
+                    <th style="text-align:center; padding:4px;">I, А</th>
+                    <th style="text-align:center; padding:4px;">Реал, кВт</th>
+                    <th style="text-align:center; padding:4px;">Вкл</th>
+                </tr>
+            </thead>
+            <tbody id="inverter-simulation-tbody"></tbody>
+        </table>
+        ${isSimRun ? '<button class="btn btn-sm" onclick="resetInverterHours()" style="width: 100%; margin-top: 5px; font-size: 11px;">♻️ Обнулить моточасы</button>' : ''}
+    `;
 
     const tbody = document.getElementById('inverter-simulation-tbody');
     if (!tbody) return;
@@ -1980,6 +1985,15 @@ function renderInverterSimulationTable(simulationData) {
             const realPower = (isActive && simulationData.inverterRealPowers) 
                 ? (simulationData.inverterRealPowers[uid] || 0) 
                 : 0;
+                
+            // Initialize inverterSettings structure if needed
+            if (!appState.inverterSettings) {
+                appState.inverterSettings = {};
+            }
+            if (!appState.inverterSettings[uid]) {
+                appState.inverterSettings[uid] = { voltage: 500, hours: 0 };
+            }
+            const hours = appState.inverterSettings[uid].hours || 0;
 
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
@@ -1987,6 +2001,7 @@ function renderInverterSimulationTable(simulationData) {
             
             tr.innerHTML = `
                 <td style="padding:4px; font-weight:bold; color:var(--text-main);">${comp.name}</td>
+                ${isSimRun ? `<td style="text-align:center; padding:4px; font-weight:bold; color:#00ff88; white-space:nowrap;">${hours.toFixed(2)} ч</td>` : ''}
                 <td style="text-align:center; padding:4px; color:var(--text-muted);">${maxPower}</td>
                 <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${voltage}</td>
                 <td style="text-align:center; padding:4px; font-weight:bold; color:${isActive ? 'var(--primary)' : 'var(--text-muted)'};">${Math.round(current * 10) / 10}</td>
@@ -3390,3 +3405,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+window.resetInverterHours = function() {
+    if (window.appState && window.appState.inverterSettings) {
+        for (let k in window.appState.inverterSettings) {
+            window.appState.inverterSettings[k].hours = 0;
+        }
+    }
+    window.updateCanvas();
+};

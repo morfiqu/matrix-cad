@@ -520,7 +520,10 @@
                 // 1. Process active charging for all connected cars
                 processActiveCharging(dt);
                 
-                // 2. Active Traffic Spawner check
+                // 2. Accumulate Inverter Operating Hours based on delivered power
+                processInverterHours(dt);
+                
+                // 3. Active Traffic Spawner check
                 checkTrafficSpawn();
                 
                 updateSimUI();
@@ -563,6 +566,36 @@
         // Trigger solver update to recalculate power routing if a car disconnected
         if (stateChanged && window.updateCanvas) {
             window.updateCanvas();
+        }
+    }
+
+    // Accumulate inverter operating hours if power > 0.01 kW
+    function processInverterHours(dtSeconds) {
+        const dtHours = dtSeconds / 3600;
+        const simData = window.lastSimulationData || { inverterRealPowers: {} };
+        
+        if (window.appState && window.appState.fields) {
+            if (!window.appState.inverterSettings) {
+                window.appState.inverterSettings = {};
+            }
+            
+            window.appState.fields.forEach(field => {
+                for (let k in field.components) {
+                    const comp = field.components[k];
+                    if (comp.type === 'inverter') {
+                        const uid = `${field.id}-${k}`;
+                        const pReal = (simData.inverterRealPowers && simData.inverterRealPowers[uid]) || 0;
+                        
+                        if (pReal > 0.01) {
+                            if (!window.appState.inverterSettings[uid]) {
+                                window.appState.inverterSettings[uid] = { voltage: 500, hours: 0 };
+                            }
+                            const currentHours = window.appState.inverterSettings[uid].hours || 0;
+                            window.appState.inverterSettings[uid].hours = currentHours + dtHours;
+                        }
+                    }
+                }
+            });
         }
     }
 
