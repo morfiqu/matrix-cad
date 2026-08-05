@@ -59,9 +59,7 @@ function updateCanvas() {
     let simulationData = { activePaths: new Set(), contactorPowers: {}, pistolPowers: {}, errorMessages: [], warningMessages: [] };
     
     if (appState.isSimulationMode) {
-        if (!appState.activeAutoRoutes || Object.keys(appState.activeAutoRoutes).length === 0) {
-            initializeSimulationRoutes();
-        }
+        initializeSimulationRoutes();
         applyAutoConnections();
         simulationData = calculateSimulation(appState.fields);
     }
