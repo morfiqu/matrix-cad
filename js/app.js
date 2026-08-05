@@ -211,7 +211,7 @@ function handleCellMouseDown(e, fieldId, r, c) {
         isDrawingComponents = true;
         activeFieldId = fieldId;
     }
-    handleCellClick(fieldId, r, c);
+    handleCellClick(fieldId, r, c, e.shiftKey || isDrawingComponents);
 }
 
 function handleCellHover(e, fieldId, r, c) {
@@ -231,11 +231,11 @@ function handleCellHover(e, fieldId, r, c) {
         return;
     }
     if (isDrawingComponents && appState.activeTool !== 'select' && activeFieldId === fieldId) {
-        handleCellClick(fieldId, r, c);
+        handleCellClick(fieldId, r, c, e.shiftKey || isDrawingComponents);
     }
 }
 
-function handleCellClick(fieldId, r, c) {
+function handleCellClick(fieldId, r, c, suppressAlerts = false) {
     if (appState.isSimulationMode) return;
     const field = appState.fields.find(f => f.id === fieldId);
     if (!field) return;
@@ -247,30 +247,36 @@ function handleCellClick(fieldId, r, c) {
         return;
     }
     
+    const triggerAlert = (msg) => {
+        if (!suppressAlerts) {
+            alert(msg);
+        }
+    };
+    
     if (field.components[key] || field.contactors[key]) return;
     
     if (appState.activeTool === 'inverter') {
         if (c === 0 && r > 0 && r < field.rows - 1) {
             if (hasPathBlockers(field, 'row', r)) {
-                alert("Нельзя установить инвертор: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить инвертор: на пути линии находятся разделители или клеммы!");
                 return;
             }
             const defaultNum = getLowestAvailableIndexGlobal('inverter');
             field.components[key] = { type: 'inverter', name: `Inv ${defaultNum}`, power: appState.lastEditedInverterPower, pos: 'left' };
         } else {
-            alert("Инвертор можно размещать только на левом поле (столбец 0)!");
+            triggerAlert("Инвертор можно размещать только на левом поле (столбец 0)!");
             return;
         }
     } else if (appState.activeTool === 'pistol') {
         if (r === field.rows - 1 && c > 0 && c < field.cols - 1) {
             if (hasPathBlockers(field, 'col', c)) {
-                alert("Нельзя установить пистолет: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить пистолет: на пути линии находятся разделители или клеммы!");
                 return;
             }
             const defaultNum = getLowestAvailableIndexGlobal('pistol');
             field.components[key] = { type: 'pistol', name: `P ${defaultNum}`, pos: 'bottom' };
         } else {
-            alert("Зарядный пистолет можно размещать только на нижнем поле (строка R)!");
+            triggerAlert("Зарядный пистолет можно размещать только на нижнем поле (строка R)!");
             return;
         }
     } else if (appState.activeTool === 'cable') {
@@ -279,7 +285,7 @@ function handleCellClick(fieldId, r, c) {
                          (c === 0 && r === field.rows - 1) || 
                          (c === field.cols - 1 && r === field.rows - 1);
         if (isCorner) {
-            alert("Нельзя размещать элементы в углах поля!");
+            triggerAlert("Нельзя размещать элементы в углах поля!");
             return;
         }
         let pos = 'middle';
@@ -290,12 +296,12 @@ function handleCellClick(fieldId, r, c) {
 
         if (pos === 'left') {
             if (hasPathBlockers(field, 'row', r)) {
-                alert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
                 return;
             }
         } else if (pos === 'top' || pos === 'bottom') {
             if (hasPathBlockers(field, 'col', c)) {
-                alert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
                 return;
             }
         }
@@ -317,16 +323,16 @@ function handleCellClick(fieldId, r, c) {
 
         if (pos === 'middle') {
             if (hasRowWire && hasColWire) {
-                alert("Здесь пересечение шин! Клемма в середине поля ставится только на горизонтальную или вертикальную линию отдельно.");
+                triggerAlert("Здесь пересечение шин! Клемма в середине поля ставится только на горизонтальную или вертикальную линию отдельно.");
                 return;
             }
             if (!hasRowWire && !hasColWire) {
-                alert("Нельзя ставить клемму в середине поля, если здесь нет проходящей линии!");
+                triggerAlert("Нельзя ставить клемму в середине поля, если здесь нет проходящей линии!");
                 return;
             }
         }
         if (pos === 'right' && !hasRowWire) {
-            alert("Нельзя ставить клемму справа, если на этой строке нет линии!");
+            triggerAlert("Нельзя ставить клемму справа, если на этой строке нет линии!");
             return;
         }
 
@@ -352,11 +358,11 @@ function handleCellClick(fieldId, r, c) {
             if (hasRowWire && hasColWire) {
                 field.contactors[key] = { type: 'standard', closed: false };
             } else {
-                alert("Контактор можно ставить только на пересечении горизонтальной (инверторной) и вертикальной (пистолетной) линий!");
+                triggerAlert("Контактор можно ставить только на пересечении горизонтальной (инверторной) и вертикальной (пистолетной) линий!");
                 return;
             }
         } else {
-            alert("Контактор можно размещать только во внутренней сетке!");
+            triggerAlert("Контактор можно размещать только во внутренней сетке!");
             return;
         }
     } else if (appState.activeTool === 'breaker') {
@@ -376,7 +382,7 @@ function handleCellClick(fieldId, r, c) {
                 }
             }
             if (hasRowWire && hasColWire) {
-                alert("Здесь пересечение шин! Разделитель ставится только на горизонтальную или вертикальную линию отдельно.");
+                triggerAlert("Здесь пересечение шин! Разделитель ставится только на горизонтальную или вертикальную линию отдельно.");
                 return;
             } else if (hasRowWire) {
                 field.contactors[key] = { type: 'horizontal', closed: false };
