@@ -3110,9 +3110,9 @@ function renderPistolDemandTable(simulationData) {
                 } else if (pActual >= demandNum - 0.01) {
                     statusColor = '#00ffaa'; // Green (Fully met)
                 } else if (pActual > 0.01) {
-                    statusColor = '#ff9f1c'; // Orange (Partially met)
+                    statusColor = '#ffd166'; // Yellow (Partially met)
                 } else {
-                    statusColor = '#ffd166'; // Yellow (Waiting)
+                    statusColor = '#ff6b00'; // Orange (Waiting)
                 }
             }
             const statusIcon = `<span style="color:${statusColor}; margin-right:6px; font-size:14px; vertical-align:middle; line-height:1;">●</span>`;
