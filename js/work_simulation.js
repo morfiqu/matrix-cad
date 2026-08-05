@@ -141,9 +141,9 @@
                 </div>
 
                 <!-- Section 3: Table of Station Pistols -->
-                <div style="width: 100%; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="width: 100%; flex-grow: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
                     <div style="font-weight: 700; font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">🔌 Статус пистолетов станции</div>
-                    <div class="work-sim-table-wrap" style="flex-grow: 1; overflow-y: auto;">
+                    <div class="work-sim-table-wrap" style="flex-grow: 1; min-height: 0; overflow-y: auto;">
                         <table class="work-sim-table">
                             <thead>
                                 <tr>
@@ -513,12 +513,46 @@
                 const dt = 0.1 * multiplier;
                 window.workSimState.totalSeconds += dt;
                 
-                // Active Traffic Spawner check
+                // 1. Process active charging for all connected cars
+                processActiveCharging(dt);
+                
+                // 2. Active Traffic Spawner check
                 checkTrafficSpawn();
                 
                 updateSimUI();
             }
         }, 100);
+    }
+
+    // Physical battery charging calculations based on delivered power
+    function processActiveCharging(dtSeconds) {
+        const dtHours = dtSeconds / 3600;
+        const simData = window.lastSimulationData || { pistolPowers: {} };
+        let stateChanged = false;
+        
+        for (let uid in window.workSimActiveConnections) {
+            const conn = window.workSimActiveConnections[uid];
+            const power = simData.pistolPowers[uid] || 0; // actual power flow in kW
+            
+            // energy = power * time (kWh)
+            const energyDelivered = power * dtHours; 
+            const capacity = conn.car.capacity || 60; // capacity in kWh
+            
+            const dSoc = (energyDelivered / capacity) * 100;
+            conn.currentSoC = Math.min(100, conn.currentSoC + dSoc);
+            
+            // If the car reaches 100% SoC, it completes charging and leaves the pistol
+            if (conn.currentSoC >= 100) {
+                console.log(`[Work Sim] Car at ${uid} is fully charged and leaves the station.`);
+                delete window.workSimActiveConnections[uid];
+                stateChanged = true;
+            }
+        }
+        
+        // Trigger solver update to recalculate power routing if a car disconnected
+        if (stateChanged && window.updateCanvas) {
+            window.updateCanvas();
+        }
     }
 
     function stopSimTicker() {
@@ -584,7 +618,6 @@
         pistols.forEach(p => {
             const activeSession = window.workSimActiveConnections[p.uid];
             const power = simData.pistolPowers[p.uid] || 0;
-            const isCharging = power > 0.01 && activeSession;
             
             let statusCell = `<span style="color: #00ff88; opacity: 0.85;">• Свободен</span>`;
             let carModel = '—';
@@ -595,7 +628,7 @@
                 statusCell = `<span style="color: var(--secondary); font-weight: bold; text-shadow: 0 0 6px rgba(255, 159, 28, 0.2);">⚡ Зарядка</span>`;
                 carModel = activeSession.car.brand;
                 powerCell = `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>`;
-                socCell = `<span style="color: var(--primary); font-weight: bold;">${activeSession.currentSoC}%</span>`;
+                socCell = `<span style="color: var(--primary); font-weight: bold;">${activeSession.currentSoC.toFixed(1)}%</span>`;
             }
             
             const tr = document.createElement('tr');
