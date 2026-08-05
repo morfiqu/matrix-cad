@@ -613,6 +613,7 @@
         const dtHours = dtSeconds / 3600;
         const simData = window.lastSimulationData || { pistolPowers: {} };
         let stateChanged = false;
+        const departedUids = [];
         
         for (let uid in window.workSimActiveConnections) {
             const conn = window.workSimActiveConnections[uid];
@@ -628,6 +629,7 @@
             // If the car reaches 100% SoC, it completes charging and leaves the pistol
             if (conn.currentSoC >= 100) {
                 console.log(`[Work Sim] Car at ${uid} is fully charged and leaves the station.`);
+                departedUids.push(uid);
                 delete window.workSimActiveConnections[uid];
                 
                 // Disconnect pistol from auto-routing
@@ -640,9 +642,14 @@
             }
         }
         
-        // Trigger solver update to recalculate power routing if a car disconnected
-        if (stateChanged && window.updateCanvas) {
-            window.updateCanvas();
+        // Trigger routing event: car departed → free its inverters and notify orange pistols
+        if (stateChanged) {
+            departedUids.forEach(uid => {
+                if (window.onCarDeparture) {
+                    window.onCarDeparture(uid);
+                }
+            });
+            if (window.updateCanvas) window.updateCanvas();
         }
     }
 
@@ -853,7 +860,12 @@
         
         console.log(`[Work Sim] Connected ${car.brand} to ${randomPistolUid} at ${initialSoc}% SoC`);
         
-        if (window.updateCanvas) window.updateCanvas();
+        // Fire event: new car arrived — finds its route (with possible energy arbitration)
+        if (window.onCarArrival) {
+            window.onCarArrival(randomPistolUid);
+        } else if (window.updateCanvas) {
+            window.updateCanvas();
+        }
     }
 
     // Window global APIs
