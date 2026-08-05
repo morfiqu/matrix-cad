@@ -3114,7 +3114,19 @@ document.addEventListener('mousedown', (e) => {
     }
 }, true);
 
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Control') {
+        document.body.classList.remove('ctrl-pressed');
+    }
+});
+window.addEventListener('blur', () => {
+    document.body.classList.remove('ctrl-pressed');
+});
+
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'Control') {
+        document.body.classList.add('ctrl-pressed');
+    }
     if (e.key === 'Escape') {
         const renameDlg = document.getElementById('rename-dialog');
         const renumberDlg = document.getElementById('renumber-dialog');

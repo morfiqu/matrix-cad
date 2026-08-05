@@ -1255,3 +1255,15 @@ input[type=number] {
 .work-sim-active .ctc-circle:hover {
     r: 8px !important;
 }
+
+/* Hide all resize/ruler buttons when Control key is held down */
+body.ctrl-pressed .hover-minus-btn,
+body.ctrl-pressed .ruler-plus-group,
+body.ctrl-pressed .svg-ruler-btn,
+body.ctrl-pressed .svg-ruler-btn-text,
+body.ctrl-pressed .svg-ruler-val-rect,
+body.ctrl-pressed .svg-ruler-val-text {
+    opacity: 0 !important;
+    display: none !important;
+    pointer-events: none !important;
+}
