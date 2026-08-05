@@ -5,9 +5,9 @@
 (function() {
     // Initial default cars config
     window.workSimCars = [
-        { brand: 'Tesla Model Y', capacity: 75, voltage: 400, current: 150 },
-        { brand: 'Nissan Leaf', capacity: 40, voltage: 350, current: 100 },
-        { brand: 'Zeekr 001', capacity: 100, voltage: 800, current: 250 }
+        { brand: 'Tesla Model Y', capacity: 75, voltage: 400, current: 150, share: 35, socMin: 15, socMax: 45 },
+        { brand: 'Nissan Leaf', capacity: 40, voltage: 350, current: 100, share: 30, socMin: 10, socMax: 40 },
+        { brand: 'Zeekr 001', capacity: 100, voltage: 800, current: 250, share: 35, socMin: 20, socMax: 50 }
     ];
 
     // Simulation Time and Speed State
@@ -15,7 +15,11 @@
         totalSeconds: 0,
         isPlaying: false,
         speedIndex: 0,
-        speeds: [1, 10, 100, 1000]
+        speeds: [1, 10, 100, 1000],
+        trafficHours: 0,
+        trafficMinutes: 5,
+        trafficSeconds: 0,
+        trafficProbability: 80
     };
 
     let simTickerInterval = null;
@@ -36,10 +40,10 @@
         panel.id = 'work-sim-panel';
         panel.className = 'work-sim-panel floating';
         panel.style.display = 'none';
-        panel.style.left = 'calc(50% - 370px)';
+        panel.style.left = 'calc(50% - 410px)';
         panel.style.top = '100px';
-        panel.style.width = '360px';
-        panel.style.height = '400px';
+        panel.style.width = '400px';
+        panel.style.height = '420px';
 
         panel.innerHTML = `
             <div class="work-sim-header" id="work-sim-handle">
@@ -50,7 +54,7 @@
             </div>
             <div class="work-sim-content">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-weight: 700; font-size: 12px; color: var(--text-muted);">СПИСОК МОДЕЛЕЙ</span>
+                    <span style="font-weight: 700; font-size: 11px; color: var(--text-muted);">СПИСОК МОДЕЛЕЙ И ДОЛИ ТРАФИКА</span>
                     <div style="display: flex; gap: 6px;">
                         <button class="btn btn-sm" onclick="exportCarsConfig()" style="font-size: 10px; padding: 3px 6px; height: auto; width: auto; min-width: 0;">⬇️ Экспорт</button>
                         <button class="btn btn-sm" onclick="triggerCarsImport()" style="font-size: 10px; padding: 3px 6px; height: auto; width: auto; min-width: 0;">⬆️ Импорт</button>
@@ -62,10 +66,12 @@
                         <thead>
                             <tr>
                                 <th>Марка</th>
-                                <th style="width: 55px; text-align: center;">C, кВтч</th>
-                                <th style="width: 50px; text-align: center;">U, В</th>
-                                <th style="width: 50px; text-align: center;">I, А</th>
-                                <th style="width: 30px;"></th>
+                                <th style="width: 48px; text-align: center;">C, кВтч</th>
+                                <th style="width: 42px; text-align: center;">U, В</th>
+                                <th style="width: 42px; text-align: center;">I, А</th>
+                                <th style="width: 42px; text-align: center;">Доля, %</th>
+                                <th style="width: 90px; text-align: center;">SoC, % (мин-макс)</th>
+                                <th style="width: 25px;"></th>
                             </tr>
                         </thead>
                         <tbody id="work-sim-cars-tbody">
@@ -73,7 +79,12 @@
                         </tbody>
                     </table>
                 </div>
-                <button class="btn" style="margin-top: 10px; width: 100%; border-radius: 6px; background: rgba(0, 255, 170, 0.08); color: var(--primary); border: 1px dashed var(--primary);" onclick="addCarRow()">➕ Добавить автомобиль</button>
+                
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                    <button class="btn" style="flex: 1; border-radius: 6px; font-size: 11px;" onclick="addCarRow()">➕ Добавить авто</button>
+                    <button class="btn" style="flex: 1.2; border-radius: 6px; font-size: 11px; background: rgba(0, 240, 255, 0.08); color: var(--secondary); border: 1px dashed var(--secondary);" onclick="autoBalanceCarShares()">⚖️ Авторасстановка</button>
+                    <button class="btn" style="flex: 1.2; border-radius: 6px; font-size: 11px; background: rgba(0, 255, 170, 0.08); color: var(--primary); border: 1px dashed var(--primary);" onclick="randomizeCarShares()">🎲 Рандом долей</button>
+                </div>
             </div>
         `;
         container.appendChild(panel);
@@ -85,8 +96,8 @@
         dash.style.display = 'none';
         dash.style.left = 'calc(50% + 10px)';
         dash.style.top = '100px';
-        dash.style.width = '320px';
-        dash.style.height = '180px';
+        dash.style.width = '380px';
+        dash.style.height = '420px';
 
         dash.innerHTML = `
             <div class="work-sim-header" id="work-sim-dash-handle">
@@ -95,15 +106,54 @@
                     <button class="work-sim-btn-icon" onclick="toggleWorkSimulationPanel()">✕</button>
                 </div>
             </div>
-            <div class="work-sim-content" style="align-items: center; justify-content: center; gap: 14px;">
-                <div style="text-align: center;">
+            <div class="work-sim-content" style="gap: 10px;">
+                <!-- Section 1: Timer and Speed (Top) -->
+                <div style="width: 100%; display: flex; flex-direction: column; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; flex-shrink: 0;">
                     <div class="work-sim-speed-badge" id="work-sim-speed-val">x1</div>
                     <div class="work-sim-time-display" id="work-sim-time-val">День 0 • 00:00:00</div>
+                    <div class="work-sim-controls-bar" style="margin-top: 8px;">
+                        <button class="btn-ctrl" onclick="changeSimSpeed(-1)" title="Медленнее (уменьшить множитель в 10 раз)">⏪</button>
+                        <button class="btn-ctrl btn-play" id="work-sim-play-btn" onclick="toggleSimPlay()">▶️ Пуск</button>
+                        <button class="btn-ctrl" onclick="changeSimSpeed(1)" title="Быстрее (ускорить в 10 раз)">⏩</button>
+                    </div>
                 </div>
-                <div class="work-sim-controls-bar">
-                    <button class="btn-ctrl" onclick="changeSimSpeed(-1)" title="Медленнее (уменьшить множитель в 10 раз)">⏪</button>
-                    <button class="btn-ctrl btn-play" id="work-sim-play-btn" onclick="toggleSimPlay()">▶️ Пуск</button>
-                    <button class="btn-ctrl" onclick="changeSimSpeed(1)" title="Быстрее (ускорить в 10 раз)">⏩</button>
+
+                <!-- Section 2: Traffic Settings -->
+                <div style="width: 100%; border-bottom: 1px solid var(--border); padding-bottom: 10px; flex-shrink: 0;">
+                    <div style="font-weight: 700; font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">🚗 Параметры трафика</div>
+                    <div style="display: flex; gap: 10px; align-items: center; font-size: 11px;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span>Интервал:</span>
+                            <input type="number" class="work-sim-input-compact" id="traffic-h" value="${window.workSimState.trafficHours}" min="0" max="23" onchange="updateTrafficParam('trafficHours', parseInt(this.value)||0)"><span>ч</span>
+                            <input type="number" class="work-sim-input-compact" id="traffic-m" value="${window.workSimState.trafficMinutes}" min="0" max="59" onchange="updateTrafficParam('trafficMinutes', parseInt(this.value)||0)"><span>м</span>
+                            <input type="number" class="work-sim-input-compact" id="traffic-s" value="${window.workSimState.trafficSeconds}" min="0" max="59" onchange="updateTrafficParam('trafficSeconds', parseInt(this.value)||0)"><span>с</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 4px; margin-left: auto;">
+                            <span>Вероятность:</span>
+                            <input type="number" class="work-sim-input-compact" id="traffic-prob" value="${window.workSimState.trafficProbability}" min="1" max="100" style="width: 40px;" onchange="updateTrafficParam('trafficProbability', parseInt(this.value)||100)"><span>%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Table of Station Pistols -->
+                <div style="width: 100%; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
+                    <div style="font-weight: 700; font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">🔌 Статус пистолетов станции</div>
+                    <div class="work-sim-table-wrap" style="flex-grow: 1; overflow-y: auto;">
+                        <table class="work-sim-table">
+                            <thead>
+                                <tr>
+                                    <th>Пистолет</th>
+                                    <th>Статус</th>
+                                    <th>Автомобиль</th>
+                                    <th style="width: 55px; text-align: center;">Р, кВт</th>
+                                    <th style="width: 55px; text-align: center;">SoC</th>
+                                </tr>
+                            </thead>
+                            <tbody id="work-sim-pistols-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         `;
@@ -145,20 +195,20 @@
                 panel.className = 'work-sim-panel floating';
                 
                 if (panelId === 'work-sim-panel') {
-                    panel.style.width = '360px';
-                    panel.style.height = '400px';
+                    panel.style.width = '400px';
+                    panel.style.height = '420px';
                 } else {
-                    panel.style.width = '320px';
-                    panel.style.height = '180px';
+                    panel.style.width = '380px';
+                    panel.style.height = '420px';
                 }
                 
                 const layout = document.getElementById('app-layout');
                 const layoutRect = layout ? layout.getBoundingClientRect() : { left: 0, top: 0 };
                 
                 if (panelId === 'work-sim-panel') {
-                    panelStartLeft = e.clientX - layoutRect.left - 180;
+                    panelStartLeft = e.clientX - layoutRect.left - 200;
                 } else {
-                    panelStartLeft = e.clientX - layoutRect.left - 160;
+                    panelStartLeft = e.clientX - layoutRect.left - 190;
                 }
                 panelStartTop = e.clientY - layoutRect.top - 20;
                 
@@ -256,8 +306,8 @@
             layout.appendChild(preview);
         }
         
-        const width = (panelId === 'work-sim-panel') ? '360px' : '320px';
-        const bottomHeight = (panelId === 'work-sim-panel') ? '250px' : '180px';
+        const width = (panelId === 'work-sim-panel') ? '400px' : '380px';
+        const bottomHeight = (panelId === 'work-sim-panel') ? '250px' : '200px';
         
         preview.style.display = 'block';
         if (side === 'left') {
@@ -307,27 +357,27 @@
         
         if (side === 'floating') {
             if (panelId === 'work-sim-panel') {
-                panel.style.left = 'calc(50% - 370px)';
+                panel.style.left = 'calc(50% - 410px)';
                 panel.style.top = '100px';
-                panel.style.width = '360px';
-                panel.style.height = '400px';
+                panel.style.width = '400px';
+                panel.style.height = '420px';
             } else {
                 panel.style.left = 'calc(50% + 10px)';
                 panel.style.top = '100px';
-                panel.style.width = '320px';
-                panel.style.height = '180px';
+                panel.style.width = '380px';
+                panel.style.height = '420px';
             }
         } else if (side === 'bottom') {
             if (panelId === 'work-sim-panel') {
                 panel.style.height = '250px';
             } else {
-                panel.style.height = '180px';
+                panel.style.height = '200px';
             }
         } else {
             if (panelId === 'work-sim-panel') {
-                panel.style.width = '360px';
+                panel.style.width = '400px';
             } else {
-                panel.style.width = '320px';
+                panel.style.width = '380px';
             }
         }
     }
@@ -354,12 +404,88 @@
                     <input type="number" class="work-sim-input" value="${car.current}" style="width: 100%; text-align: center;" min="1" step="5" onchange="updateCarField(${index}, 'current', parseFloat(this.value) || 0)">
                 </td>
                 <td style="text-align: center;">
-                    <button class="btn-remove-row" onclick="removeCarRow(${index})" title="Удалить автомобиль">✕</button>
+                    <input type="number" class="work-sim-input" value="${car.share || 0}" style="width: 100%; text-align: center;" min="0" max="100" onchange="updateCarField(${index}, 'share', parseInt(this.value)||0); checkTotalShare();">
+                </td>
+                <td style="text-align: center;">
+                    <div style="display: flex; gap: 4px; align-items: center; justify-content: center;">
+                        <input type="number" class="work-sim-input" value="${car.socMin !== undefined ? car.socMin : 10}" style="width: 32px; text-align: center; padding: 4px 2px;" min="0" max="100" onchange="updateCarField(${index}, 'socMin', parseInt(this.value)||0)">
+                        <span style="color: var(--text-muted); font-size: 10px;">-</span>
+                        <input type="number" class="work-sim-input" value="${car.socMax !== undefined ? car.socMax : 50}" style="width: 32px; text-align: center; padding: 4px 2px;" min="0" max="100" onchange="updateCarField(${index}, 'socMax', parseInt(this.value)||0)">
+                    </div>
+                </td>
+                <td style="text-align: center;">
+                    <button class="btn-remove-row" onclick="removeCarRow(${index})" title="Удалить модель">✕</button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
+
+        // Add summary row at the bottom
+        const totalShare = getCarSharesSum();
+        const sumColor = totalShare === 100 ? '#00ff88' : '#ff4a6b';
+        const sumText = `${totalShare}%`;
+
+        const summaryTr = document.createElement('tr');
+        summaryTr.style.background = 'rgba(255, 255, 255, 0.02)';
+        summaryTr.style.fontWeight = 'bold';
+        summaryTr.style.borderTop = '1px solid var(--border)';
+        summaryTr.innerHTML = `
+            <td colspan="4" style="text-align: left; padding: 8px 6px; color: var(--text-muted);">Итого доля:</td>
+            <td style="text-align: center; color: ${sumColor};" id="work-sim-total-share-cell">${sumText}</td>
+            <td colspan="2"></td>
+        `;
+        tbody.appendChild(summaryTr);
     }
+
+    function getCarSharesSum() {
+        return window.workSimCars.reduce((sum, car) => sum + (car.share || 0), 0);
+    }
+
+    window.checkTotalShare = function() {
+        const totalShare = getCarSharesSum();
+        const cell = document.getElementById('work-sim-total-share-cell');
+        if (cell) {
+            cell.textContent = `${totalShare}%`;
+            cell.style.color = totalShare === 100 ? '#00ff88' : '#ff4a6b';
+        }
+    };
+
+    window.autoBalanceCarShares = function() {
+        const N = window.workSimCars.length;
+        if (N === 0) return;
+        let base = Math.floor(100 / N);
+        let diff = 100 - (base * N);
+        window.workSimCars.forEach((car, idx) => {
+            car.share = base + (idx < diff ? 1 : 0);
+        });
+        renderCarsTable();
+    };
+
+    window.randomizeCarShares = function() {
+        const N = window.workSimCars.length;
+        if (N === 0) return;
+        if (N === 1) {
+            window.workSimCars[0].share = 100;
+            renderCarsTable();
+            return;
+        }
+        let raw = [];
+        let sum = 0;
+        for (let i = 0; i < N; i++) {
+            let r = Math.floor(Math.random() * 90) + 10;
+            raw.push(r);
+            sum += r;
+        }
+        let shares = raw.map(v => Math.round((v / sum) * 100));
+        let currentSum = shares.reduce((a, b) => a + b, 0);
+        let diff = 100 - currentSum;
+        shares[shares.length - 1] += diff; // Adjust last row to sum to exactly 100
+        
+        window.workSimCars.forEach((car, idx) => {
+            car.share = shares[idx];
+        });
+        renderCarsTable();
+    };
 
     // Format Simulation Time (Day X • HH:MM:SS)
     function formatSimTime(totalSeconds) {
@@ -414,7 +540,75 @@
                 playBtn.classList.remove('playing');
             }
         }
+
+        renderPistolsTable();
     }
+
+    // Render Table of Station Pistols
+    window.renderPistolsTable = function() {
+        const tbody = document.getElementById('work-sim-pistols-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        
+        const pistols = [];
+        if (window.appState && window.appState.fields) {
+            window.appState.fields.forEach(field => {
+                for (let k in field.components) {
+                    const comp = field.components[k];
+                    if (comp.type === 'pistol') {
+                        pistols.push({
+                            uid: `${field.id}-${k}`,
+                            name: comp.name || `Пистолет ${field.id}-${k}`
+                        });
+                    }
+                }
+            });
+        }
+        
+        if (pistols.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px; font-size: 11px;">Нет подключенных пистолетов</td></tr>`;
+            return;
+        }
+        
+        const simData = window.lastSimulationData || { pistolPowers: {} };
+        
+        pistols.forEach(p => {
+            const power = simData.pistolPowers[p.uid] || 0;
+            const isCharging = power > 0.01;
+            
+            const statusCell = isCharging 
+                ? `<span style="color: var(--secondary); font-weight: bold; text-shadow: 0 0 6px rgba(255, 159, 28, 0.2);">⚡ Зарядка</span>` 
+                : `<span style="color: #00ff88; opacity: 0.85;">• Свободен</span>`;
+                
+            const carModel = isCharging 
+                ? (window.workSimCars[0] ? window.workSimCars[0].brand : 'Электромобиль')
+                : '—';
+                
+            const powerCell = isCharging 
+                ? `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>` 
+                : `<span style="color: var(--text-muted);">0 кВт</span>`;
+                
+            const socCell = isCharging 
+                ? `<span style="color: var(--primary); font-weight: bold;">35%</span>` 
+                : `<span style="color: var(--text-muted);">—</span>`;
+                
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight: 500; color: var(--text-main); font-size: 10px;">${p.name}</td>
+                <td style="font-size: 10px;">${statusCell}</td>
+                <td style="font-size: 10px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${carModel}</td>
+                <td style="text-align: center; font-size: 10px;">${powerCell}</td>
+                <td style="text-align: center; font-size: 10px;">${socCell}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    };
+
+    window.updateTrafficParam = function(param, val) {
+        if (window.workSimState[param] !== undefined) {
+            window.workSimState[param] = val;
+        }
+    };
 
     // Window global APIs
     window.toggleWorkSimulationPanel = function() {
@@ -470,7 +664,7 @@
     };
 
     window.addCarRow = function() {
-        window.workSimCars.push({ brand: 'Новый электромобиль', capacity: 60, voltage: 400, current: 150 });
+        window.workSimCars.push({ brand: 'Новая модель', capacity: 60, voltage: 400, current: 150, share: 0, socMin: 10, socMax: 50 });
         renderCarsTable();
     };
 
@@ -510,7 +704,12 @@
                         typeof item.current === 'number'
                     );
                     if (valid) {
-                        window.workSimCars = parsed;
+                        window.workSimCars = parsed.map(c => ({
+                            ...c,
+                            share: c.share !== undefined ? c.share : 0,
+                            socMin: c.socMin !== undefined ? c.socMin : 10,
+                            socMax: c.socMax !== undefined ? c.socMax : 50
+                        }));
                         renderCarsTable();
                     } else {
                         alert('Неверный формат файла конфигурации автомобилей!');

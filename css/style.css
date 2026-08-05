@@ -1189,3 +1189,37 @@ input[type=number] {
     border-color: var(--danger);
     box-shadow: 0 0 10px rgba(255, 74, 107, 0.2);
 }
+
+/* Compact input and title overrides */
+.work-sim-input-compact {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 2px 4px;
+    width: 32px;
+    text-align: center;
+    outline: none;
+    box-sizing: border-box;
+    -moz-appearance: textfield;
+}
+
+.work-sim-input-compact::-webkit-outer-spin-button,
+.work-sim-input-compact::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.work-sim-input-compact:focus {
+    border-color: var(--primary);
+    background: rgba(0, 255, 170, 0.04);
+}
+
+.work-sim-sec-title {
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}

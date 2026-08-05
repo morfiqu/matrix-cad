@@ -66,6 +66,11 @@ function updateCanvas() {
         simulationData = calculateSimulation(appState.fields);
     }
     
+    window.lastSimulationData = simulationData;
+    if (window.renderPistolsTable) {
+        window.renderPistolsTable();
+    }
+    
     appState.fields.forEach((field, index) => {
         const fieldRowContainer = document.createElement('div');
         fieldRowContainer.className = 'field-row-container';
