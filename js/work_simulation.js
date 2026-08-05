@@ -787,7 +787,7 @@
                     statusText = '⚡ Зарядка';
                 } else if (power > 0.01) {
                     statusColor = '#ffd166'; // Yellow
-                    statusText = '⚡ Частично';
+                    statusText = '⚡ Зарядка';
                 } else {
                     statusColor = '#ff6b00'; // Orange
                     statusText = '⏳ Ожидание';
