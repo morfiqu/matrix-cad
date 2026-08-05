@@ -2606,9 +2606,19 @@ function renderPistolDemandTable(simulationData) {
             }
             
             const settings = appState.pistolDemands[uid];
-            const voltage = settings.voltage;
-            const current = settings.current;
-            const demandNum = (voltage * current) / 1000;
+            let isSimRun = (window.workSimState && window.workSimState.isActiveSimRun);
+            let displayVoltage = settings.voltage;
+            let displayCurrent = settings.current;
+            if (isSimRun) {
+                if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
+                    displayVoltage = window.workSimActiveConnections[uid].car.voltage;
+                    displayCurrent = window.workSimActiveConnections[uid].car.current;
+                } else {
+                    displayVoltage = 0;
+                    displayCurrent = 0;
+                }
+            }
+            const demandNum = (displayVoltage * displayCurrent) / 1000;
             
             // Calculate local inverter power for local inverter count estimation
             let localInvPower = 60;
@@ -2655,16 +2665,16 @@ function renderPistolDemandTable(simulationData) {
                     ${statusIcon} ${comp.name}
                 </td>
                 <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${voltage}" style="width:40px;">
+                    <input type="number" class="demand-input u-input" data-uid="${uid}" min="0" max="1000" step="10" value="${displayVoltage}" style="width:40px;" ${isSimRun ? 'disabled' : ''}>
                 </td>
                 <td style="text-align:center; padding:4px;">
-                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(current * 10) / 10}" style="width:40px;">
+                    <input type="number" class="demand-input i-input" data-uid="${uid}" min="0" step="1" value="${Math.round(displayCurrent * 10) / 10}" style="width:40px;" ${isSimRun ? 'disabled' : ''}>
                 </td>
                 <td class="power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isPowerExcess ? 'var(--danger)' : 'var(--text-main)'};">${Math.round(demandNum * 10) / 10}</td>
                 <td class="actual-power-cell" style="text-align:center; padding:4px; font-weight:bold; color:${isMet ? 'var(--primary)' : 'var(--warning)'};">${Math.round(pActual * 10) / 10}</td>
                 <td class="demand-count-cell" style="text-align:center; padding:4px; ${isPowerExcess ? 'color: var(--danger);' : ''}">${invCount}</td>
                 <td style="text-align:center; padding:4px;">
-                    <input type="checkbox" class="auto-connect-checkbox" data-uid="${uid}" ${settings.autoConnect ? 'checked' : ''} style="cursor:pointer; accent-color:var(--primary); width:14px; height:14px;">
+                    <input type="checkbox" class="auto-connect-checkbox" data-uid="${uid}" ${settings.autoConnect ? 'checked' : ''} style="cursor:pointer; accent-color:var(--primary); width:14px; height:14px;" ${isSimRun ? 'disabled' : ''}>
                 </td>
                 <td style="text-align:center; padding:4px;">
                     <button
@@ -2672,6 +2682,7 @@ function renderPistolDemandTable(simulationData) {
                         data-uid="${uid}"
                         title="${isHighlighted ? 'Скрыть маршрут' : 'Найти оптимальный маршрут'}"
                         style="padding: 2px 6px; font-size: 11px;"
+                        ${isSimRun ? 'disabled' : ''}
                     >${isHighlighted ? (lastResult && lastResult.reachable ? '✅' : '❌') : '🔍'}</button>
                 </td>
             `;

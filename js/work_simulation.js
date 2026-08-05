@@ -699,6 +699,7 @@
         const panel = document.getElementById('work-sim-panel');
         const dash = document.getElementById('work-sim-dash-panel');
         const btn = document.getElementById('btn-work-sim');
+        const layout = document.getElementById('app-layout');
         if (!panel || !dash) return;
         
         const isOpening = (panel.style.display === 'none');
@@ -708,6 +709,7 @@
             panel.style.display = 'flex';
             dash.style.display = 'flex';
             if (btn) btn.classList.add('active');
+            if (layout) layout.classList.add('work-sim-active');
             renderCarsTable();
             updateSimUI();
             startSimTicker();
@@ -715,6 +717,7 @@
             panel.style.display = 'none';
             dash.style.display = 'none';
             if (btn) btn.classList.remove('active');
+            if (layout) layout.classList.remove('work-sim-active');
             hideSnapPreview();
             stopSimTicker();
         }
@@ -747,9 +750,11 @@
         const panel = document.getElementById('work-sim-panel');
         const dash = document.getElementById('work-sim-dash-panel');
         const btn = document.getElementById('btn-work-sim');
+        const layout = document.getElementById('app-layout');
         if (panel) panel.style.display = 'none';
         if (dash) dash.style.display = 'none';
         if (btn) btn.classList.remove('active');
+        if (layout) layout.classList.remove('work-sim-active');
         hideSnapPreview();
         updateSimUI();
     };

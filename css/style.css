@@ -1245,3 +1245,12 @@ input[type=number] {
     color: #000000 !important;
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
 }
+
+/* Disable pointer cursor and hover scaling on contactor circles during active simulation run */
+.work-sim-active .ctc-circle {
+    cursor: default !important;
+}
+
+.work-sim-active .ctc-circle:hover {
+    r: 8px !important;
+}
