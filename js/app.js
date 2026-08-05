@@ -2223,6 +2223,9 @@ function _runEnergyArbitration(newPistolUid) {
             return false;
         }
 
+        // Expand discovery buses so we know ALL physical buses we will touch (including cables on all sheets!)
+        const discoveryBusesExpanded = _expandCableClaims(discovery.usedBuses);
+
         // Find the best donor candidate based on SoC, inverter/bus blocking, and priority
         let bestDonorUid = null;
         let bestDonorSoC = -1;
@@ -2254,7 +2257,7 @@ function _runEnergyArbitration(newPistolUid) {
             let blocksBus = false;
             if (donorRoute.usedBuses) {
                 for (let bus of donorRoute.usedBuses) {
-                    if (discovery.usedBuses.has(bus)) {
+                    if (discoveryBusesExpanded.has(bus)) {
                         blocksBus = true;
                         break;
                     }
@@ -2343,7 +2346,11 @@ function _runEnergyArbitration(newPistolUid) {
             console.log(`[Арбитраж] Шаг ${attempt} успешно применен. Продолжаем каскад.`);
         } else {
             // Rollback this step's change and try another candidate
-            console.log(`[Арбитраж] Шаг ${attempt} привел к ошибкам или отсутствию пути. Откатываем этот шаг.`);
+            if (checkLocal.hasErrors) {
+                console.log(`[Арбитраж] Шаг ${attempt} привел к ошибкам симуляции: ${checkLocal.errors.join('; ')}. Откатываем этот шаг.`);
+            } else {
+                console.log(`[Арбитраж] Шаг ${attempt} не позволил проложить путь для запрашивающего. Откатываем этот шаг.`);
+            }
             appState.activeAutoRoutes = JSON.parse(backupRoutesLocal);
             applyAutoConnections();
         }
