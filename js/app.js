@@ -2027,6 +2027,60 @@ function renderInverterSimulationTable(simulationData) {
     }
 }
 
+function _expandCableClaims(claimedBuses) {
+    const expanded = new Set(claimedBuses);
+    if (!claimedBuses) return expanded;
+    
+    claimedBuses.forEach(busKey => {
+        if (busKey.startsWith('cable-')) {
+            const netName = busKey.substring(6).toLowerCase();
+            if (appState && appState.fields) {
+                appState.fields.forEach(field => {
+                    for (let key in field.components) {
+                        const comp = field.components[key];
+                        if (comp.type === 'cable' && comp.name.toLowerCase() === netName) {
+                            const keyParts = key.split('-');
+                            const rowNum = parseInt(keyParts[0]);
+                            const colNum = parseInt(keyParts[1]);
+                            
+                            // Check row connection
+                            let hasRow = false;
+                            if (comp.pos === 'middle' || comp.pos === 'left' || comp.pos === 'right') {
+                                for (let colCheck = 0; colCheck < field.cols; colCheck++) {
+                                    const cc = field.components[`${rowNum}-${colCheck}`];
+                                    if (cc && (cc.type === 'inverter' || (cc.type === 'cable' && cc.pos !== 'middle' && cc.pos !== 'right'))) {
+                                        hasRow = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (hasRow && rowNum > 0 && rowNum < field.rows - 1) {
+                                expanded.add(`${field.id}-row-${rowNum}`);
+                            }
+
+                            // Check col connection
+                            let hasCol = false;
+                            if (comp.pos === 'middle' || comp.pos === 'top' || comp.pos === 'bottom') {
+                                for (let rowCheck = 0; rowCheck < field.rows; rowCheck++) {
+                                    const rc = field.components[`${rowCheck}-${colNum}`];
+                                    if (rc && (rc.type === 'pistol' || (rc.type === 'cable' && rc.pos !== 'middle' && rc.pos !== 'right'))) {
+                                        hasCol = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (hasCol && colNum > 0 && colNum < field.cols - 1) {
+                                expanded.add(`${field.id}-col-${colNum}`);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    });
+    return expanded;
+}
+
 function getClaimedResourcesExcluding(excludePistolUid) {
     const claimedInverters = new Set();
     const claimedBuses = new Set();
@@ -2044,7 +2098,8 @@ function getClaimedResourcesExcluding(excludePistolUid) {
         }
     }
     
-    return { claimedInverters, claimedBuses };
+    const expandedBuses = _expandCableClaims(claimedBuses);
+    return { claimedInverters, claimedBuses: expandedBuses };
 }
 
 // Returns current SoC for a pistol's car (or 50 as neutral default in manual mode)
@@ -2075,7 +2130,8 @@ function _getClaimedExcluding(excludeUid) {
         if (r.usedInverters) r.usedInverters.forEach(i => claimedInverters.add(i.uid));
         if (r.usedBuses)     r.usedBuses.forEach(b => claimedBuses.add(b));
     }
-    return { claimedInverters, claimedBuses };
+    const expandedBuses = _expandCableClaims(claimedBuses);
+    return { claimedInverters, claimedBuses: expandedBuses };
 }
 
 // Store a completed route result into activeAutoRoutes
@@ -3267,6 +3323,9 @@ function getClaimedInvertersForPistol(targetPistolUid, outClaimedBuses = null) {
                 result.usedBuses.forEach(bus => {
                     claimedBuses.add(bus);
                 });
+                // Expand cable claims immediately so that subsequent pistols in this sequence are also protected
+                const expanded = _expandCableClaims(claimedBuses);
+                expanded.forEach(bus => claimedBuses.add(bus));
             }
         }
     });
