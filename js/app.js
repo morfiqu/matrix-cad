@@ -2382,6 +2382,27 @@ window.onCarArrival = function(pistolUid) {
     if (window.updateCanvas) window.updateCanvas();
 };
 
+function _getOrangePistols() {
+    const orange = [];
+    if (appState && appState.fields) {
+        appState.fields.forEach(field => {
+            for (let key in field.components) {
+                const comp = field.components[key];
+                if (comp.type === 'pistol') {
+                    const uid = `${field.id}-${key}`;
+                    if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                        const route = appState.activeAutoRoutes[uid];
+                        if (!route || !route.reachable || !route.usedInverters || route.usedInverters.length === 0) {
+                            orange.push(uid);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    return orange;
+}
+
 // ── PUBLIC EVENT: Car has departed from pistolUid ─────────────
 window.onCarDeparture = function(pistolUid) {
     if (!appState.activeAutoRoutes) appState.activeAutoRoutes = {};
@@ -2401,13 +2422,7 @@ window.onCarDeparture = function(pistolUid) {
     // Notify all orange pistols (those without a reachable route) that inverters are freed.
     // They try to claim the freed resources in order of SoC priority (lowest SoC first).
     if (freedInverters.size > 0) {
-        const orangePistols = [];
-        for (let pUid in appState.activeAutoRoutes) {
-            const r = appState.activeAutoRoutes[pUid];
-            if (!r.reachable || !r.usedInverters || r.usedInverters.length === 0) {
-                orangePistols.push(pUid);
-            }
-        }
+        const orangePistols = _getOrangePistols();
         // Sort by SoC ascending (most needy first)
         orangePistols.sort((a, b) => getSimPistolSoC(a) - getSimPistolSoC(b));
 
@@ -2493,13 +2508,7 @@ function updateRouteForPistol(uid) {
 function recalculateOrangeRoutes() {
     if (!appState.activeAutoRoutes) return;
     
-    const orangePistols = [];
-    for (let pUid in appState.activeAutoRoutes) {
-        const route = appState.activeAutoRoutes[pUid];
-        if (!route.reachable || !route.usedInverters || route.usedInverters.length === 0) {
-            orangePistols.push(pUid);
-        }
-    }
+    const orangePistols = _getOrangePistols();
 
     orangePistols.forEach(orangeUid => {
         const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
