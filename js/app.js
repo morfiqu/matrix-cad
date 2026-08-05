@@ -2075,10 +2075,7 @@ function initializeSimulationRoutes() {
     });
 
     autoPistols.forEach(p => {
-        const settings = appState.pistolDemands[p.uid];
-        const u = settings.voltage || 0;
-        const i = settings.current || 0;
-        const demand = (u * i) / 1000;
+        const demand = getPistolDemand(p.field.id, p.key);
         if (demand <= 0) return;
 
         const result = findOptimalPath(appState.fields, p.uid, demand, claimedInverters, null, claimedBuses);
