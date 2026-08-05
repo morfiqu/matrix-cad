@@ -63,7 +63,8 @@ function bindSVGDragSelection(field, svg, state) {
         const isCtrlPressed = e.ctrlKey || e.metaKey;
         if (!isCtrlPressed) return; // Drag selection is only allowed when Control is held down
         
-        if (currentTool !== 'select' && currentTool !== 'contactor') return;
+        const isContactorCtrlDrag = (currentTool === 'contactor' && isCtrlPressed);
+        if (currentTool !== 'select' && !isContactorCtrlDrag) return;
         
         if (e.target.closest && e.target.closest('.inv-box, .cable-box, .pst-box, .ctc-circle')) {
             return;
