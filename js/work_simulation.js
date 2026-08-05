@@ -171,6 +171,9 @@
         initDragging('work-sim-panel', 'work-sim-handle');
         initDragging('work-sim-dash-panel', 'work-sim-dash-handle');
         
+        initResizing('work-sim-panel');
+        initResizing('work-sim-dash-panel');
+        
         renderCarsTable();
         updateSimUI();
     }
@@ -291,6 +294,63 @@
                     currentDocks[panelId] = 'floating';
                     panel.className = 'work-sim-panel floating';
                 }
+            };
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    // Generic resizing module for simulation panels
+    function initResizing(panelId) {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        
+        const resizer = document.createElement('div');
+        resizer.className = 'work-sim-resizer';
+        panel.appendChild(resizer);
+        
+        resizer.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const startWidth = panel.offsetWidth;
+            const startHeight = panel.offsetHeight;
+            const startX = e.clientX;
+            const startY = e.clientY;
+            
+            const currentDock = currentDocks[panelId] || 'floating';
+            if (currentDock !== 'floating') {
+                dockPanel('floating', panelId);
+                const layout = document.getElementById('app-layout');
+                const layoutRect = layout ? layout.getBoundingClientRect() : { left: 0, top: 0 };
+                panel.style.left = (e.clientX - layoutRect.left - startWidth + 10) + 'px';
+                panel.style.top = (e.clientY - layoutRect.top - startHeight + 10) + 'px';
+                panel.style.right = 'auto';
+                panel.style.bottom = 'auto';
+            }
+            
+            const onMouseMove = (ev) => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                
+                let newWidth = startWidth + dx;
+                let newHeight = startHeight + dy;
+                
+                const minWidth = 280;
+                const minHeight = 200;
+                
+                if (newWidth < minWidth) newWidth = minWidth;
+                if (newHeight < minHeight) newHeight = minHeight;
+                
+                panel.style.width = newWidth + 'px';
+                panel.style.height = newHeight + 'px';
+            };
+            
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
             };
             
             document.addEventListener('mousemove', onMouseMove);
