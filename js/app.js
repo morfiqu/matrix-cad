@@ -2098,6 +2098,23 @@ function getClaimedResourcesExcluding(excludePistolUid) {
         }
     }
     
+    // Add column buses of ALL other active/waiting pistols (autoConnect === true)
+    if (appState && appState.fields) {
+        appState.fields.forEach(field => {
+            for (let key in field.components) {
+                const comp = field.components[key];
+                if (comp.type === 'pistol') {
+                    const uid = `${field.id}-${key}`;
+                    if (uid !== excludePistolUid && appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                        const parts = key.split('-');
+                        const colNum = parseInt(parts[1]);
+                        claimedBuses.add(`${field.id}-col-${colNum}`);
+                    }
+                }
+            }
+        });
+    }
+    
     const expandedBuses = _expandCableClaims(claimedBuses);
     return { claimedInverters, claimedBuses: expandedBuses };
 }
@@ -2130,6 +2147,24 @@ function _getClaimedExcluding(excludeUid) {
         if (r.usedInverters) r.usedInverters.forEach(i => claimedInverters.add(i.uid));
         if (r.usedBuses)     r.usedBuses.forEach(b => claimedBuses.add(b));
     }
+    
+    // Add column buses of ALL other active/waiting pistols (autoConnect === true)
+    if (appState && appState.fields) {
+        appState.fields.forEach(field => {
+            for (let key in field.components) {
+                const comp = field.components[key];
+                if (comp.type === 'pistol') {
+                    const uid = `${field.id}-${key}`;
+                    if (uid !== excludeUid && appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
+                        const parts = key.split('-');
+                        const colNum = parseInt(parts[1]);
+                        claimedBuses.add(`${field.id}-col-${colNum}`);
+                    }
+                }
+            }
+        });
+    }
+    
     const expandedBuses = _expandCableClaims(claimedBuses);
     return { claimedInverters, claimedBuses: expandedBuses };
 }
@@ -3064,12 +3099,18 @@ function renderPistolDemandTable(simulationData) {
             
             let statusColor = '#8a99ad'; // Default gray when !settings.autoConnect
             if (settings.autoConnect) {
-                if (pActual >= demandNum - 0.01) {
-                    statusColor = '#00ffaa'; // Green
-                } else if (pActual > 0.01) {
-                    statusColor = '#ff9f1c'; // Orange
+                let hasPistolError = false;
+                if (simulationData && simulationData.errorMessages) {
+                    const pNameUpper = comp.name.trim().toUpperCase();
+                    hasPistolError = simulationData.errorMessages.some(err => err.trim().toUpperCase().includes(pNameUpper));
+                }
+                
+                if (hasPistolError) {
+                    statusColor = '#ff4a6b'; // Red (Error/Conflict)
+                } else if (pActual >= demandNum - 0.01) {
+                    statusColor = '#00ffaa'; // Green (Fully met)
                 } else {
-                    statusColor = '#ff4a6b'; // Red
+                    statusColor = '#ff9f1c'; // Orange/Yellow (Waiting or partially met without errors)
                 }
             }
             const statusIcon = `<span style="color:${statusColor}; margin-right:6px; font-size:14px; vertical-align:middle; line-height:1;">●</span>`;
