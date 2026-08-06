@@ -16,9 +16,9 @@ This document serves as the complete, authoritative reference of the Matrix CAD 
 
 ---
 
-## 2. Core Routing Engine (`js/solver.js`)
+## 2. Core Routing Engine (`js/solver.js` & `js/app.js`)
 
-### A. Pathfinder Cost Weights (`findOptimalPath`)
+### A. Pathfinder Cost Weights (`findOptimalPath` in [`js/solver.js`](file:///S:/matrix_cad/js/solver.js))
 The pathfinding algorithm uses a custom BFS queue prioritizing path cost.
 * **Layout Independence**: Length in wire grid cells (hops) and sheet-to-sheet cable jumps have **`0` cost penalty**.
 * **Contactor-Only Cost**: Cost is determined strictly by the number of switches closed:
@@ -30,14 +30,15 @@ The pathfinding algorithm uses a custom BFS queue prioritizing path cost.
 * The pathfinder receives a required **`targetPower`** in kW (not a raw inverter count).
 * It crawls reachable inverters, sorting them by cost, and aggregates their nominal capacities until `targetPower` is satisfied. It selects exactly the optimal subset of inverters.
 
-### C. Electrical Isolation (`claimedBuses`)
+### C. Transit Column Protection (`claimedBuses`)
 * Active paths claim their traversed horizontal and vertical buses (identified as `"{fieldId}-row-{r}"` or `"{fieldId}-col-${c}"`).
-* To prevent short-circuits and duplicate connection errors, subsequent pathfinder runs for other pistols treat these claimed buses as blocked.
+* **Pistol Column Isolation**: To prevent transit-based short circuits (where a route uses a different pistol's column bus for transit, thereby energizing that pistol), the column buses of **all other pistols on the grid** are automatically claimed and blocked for any other route.
+* **Cable Expansion**: Traversed sheet-to-sheet cables recursively expand their claims across all sheets, preventing separate routes from merging on the same cable net.
 * **Self-Reusability**: During multi-stage search (affinity + extra), the target pistol's own affinity buses are **not** blocked for its extra stage, allowing the additional paths to reuse its own starting row and column wires.
 
 ---
 
-## 3. Pistol Scheduling & Stability (`js/app.js`)
+## 3. Pistol Scheduling & Queue Management (`js/app.js`)
 
 ### A. Routing Affinity (`appState.pistolToInverterAffinity`)
 * Remembers previously connected inverter UIDs for each pistol.
@@ -47,10 +48,14 @@ The pathfinding algorithm uses a custom BFS queue prioritizing path cost.
 * If a pistol's power demand increases:
   1. The algorithm first locks in the existing affinity paths (`K` inverters).
   2. It searches for additional paths to satisfy the remaining power (`demand - affinityPower`).
-  3. If the additional power cannot be found, it **keeps the existing affinity paths active** (does not drop the connection) and reports a partial connection warning in the sidebar:
-     `Не удалось подключить всю мощность для {Pistol} (Лист N)! Подключено {X} из {Y} кВт.`
+  3. If the additional power cannot be found, it **keeps the existing affinity paths active** (does not drop the connection) and reports a partial connection warning in the sidebar.
 
-### C. Last Action Priority (`lastModifiedPistolUid`)
+### C. Queue Activation Fix (`_getOrangePistols` in [`js/app.js`](file:///S:/matrix_cad/js/app.js))
+* When a car fails to route on arrival, its route is removed from `appState.activeAutoRoutes`.
+* To ensure unrouted (red/orange) cars are not ignored, `_getOrangePistols()` scans all pistols on the board. Any pistol with `autoConnect === true` but without a full route is correctly identified.
+* These unrouted pistols are placed in a queue sorted by SoC and automatically re-routed whenever resources are freed (e.g. on `onCarDeparture`).
+
+### D. Last Action Priority (`lastModifiedPistolUid`)
 * Whenever a user changes a pistol's demand or toggles its "Авто" checkbox, `appState.lastModifiedPistolUid` is set to that pistol's UID.
 * In `applyAutoConnections`, the last-modified pistol is sorted to the **very end of the queue**.
 * This prioritizes all other already-running stable lines first, ensuring the newly modified request only takes leftover resources and never displaces active connections.
@@ -62,12 +67,14 @@ The pathfinding algorithm uses a custom BFS queue prioritizing path cost.
 * **Nominal Inverter Capacity (`getInverterPower`)**:
   * Returns the fixed nominal capacity of the component (`comp.power || 60`) rather than the dynamic simulated load, breaking circular feedback loops in path calculations.
 * **Inverter Parameters**:
-  * Displays $U = 0\text{ V}$ and $I = 0\text{ A}$ by default. When connected, parameters adapt to the connected pistol's voltage and the calculated current flow. Manual input fields are disabled and displayed as text.
+  * Displays $U = 0\text{ V}$ and $I = 0\text{ A}$ by default. When connected, parameters adapt to the connected pistol's voltage and the calculated current flow. Manual input fields are disabled.
 * **Cable Terminals Duplicate Names**:
   * `cable` type components bypass the global unique name validation in `isNameDuplicateGlobal` to allow connecting sheets.
-* **Sidebar Layout**:
-  * **📋 Заявка мощности пистолетов** table is positioned above the **🔋 Параметры инверторов** table.
-* **Visual Glow**:
-  * Grid lines, contactors, and inverters only glow when they carry active current flow (`actualPowerFlow > 0`).
-* **Sidebar Labels**:
-  * Active and Maximum power indicators are rounded to one decimal place (`Math.round(val * 10) / 10`).
+* **Traffic Spawner Catch-up Loop**:
+  * Under high speed multipliers (e.g. x1000), a sequential `while` loop catches up `lastTrafficCheckTime` with the current `totalSeconds`, rolling spawn probability for every virtual second elapsed.
+* **Four-State Color Synchronization**:
+  * Dot colors in the sidebar table and labels in the Control Panel are synchronized:
+    * **Green (`#00ffaa`)**: Charging at full capacity. Text: `⚡ Зарядка`.
+    * **Yellow (`#ffd166`)**: Charging at partial capacity. Text: `⚡ Зарядка`.
+    * **Reddish Orange (`#ff6b00`)**: Standing in queue / waiting. Text: `⏳ Ожидание`.
+    * **Red (`#ff4a6b`)**: Involved in an active electrical conflict (e.g. short circuit). Text: `⚠️ Конфликт`.
