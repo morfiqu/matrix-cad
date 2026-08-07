@@ -55,6 +55,8 @@ function createInitialState() {
         isSimulationMode: false,
         showPowerFlow: true,
         showFlowArrows: true,
+        showInverterOrder: false,
+        hoveredPistolUid: null,
         pistolDemands: {},         // { "fieldId-r-c": number (kW) }
         inverterSettings: {},      // { "fieldId-r-c": { voltage, current } }
         autoClosedContactors: [],  // list of contactor keys closed by auto-connect

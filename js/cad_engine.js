@@ -1003,6 +1003,19 @@ function drawPlacedComponents(field, svg, simulationData, state) {
     const { activePaths, pistolPowers } = simulationData;
     const { isSimulationMode, selectedKeys, onCompMouseDown, onCompDblClick, onCompContextMenu } = state;
     
+    let inverterOrders = null;
+    if (state.showInverterOrder) {
+        inverterOrders = {};
+        if (state.hoveredPistolUid && typeof findOptimalPath === 'function') {
+            const result = findOptimalPath(window.appState.fields, state.hoveredPistolUid, 999999, new Set(), null, new Set());
+            if (result && result.usedInverters) {
+                result.usedInverters.forEach(inv => {
+                    inverterOrders[inv.uid] = inv.order;
+                });
+            }
+        }
+    }
+    
     const globalCounts = { inverter: {}, pistol: {} };
     if (window.appState && window.appState.fields) {
         window.appState.fields.forEach(f => {
@@ -1099,6 +1112,31 @@ function drawPlacedComponents(field, svg, simulationData, state) {
         };
         
         svg.appendChild(box);
+        
+        const isPistolSelected = comp.type === 'pistol' && state.showInverterOrder && state.hoveredPistolUid === `${field.id}-${key}`;
+        
+        if (isPistolSelected) {
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", x);
+            circle.setAttribute("cy", y);
+            circle.setAttribute("r", 12);
+            circle.setAttribute("fill", "#ff3366");
+            circle.setAttribute("stroke", "#ffffff");
+            circle.setAttribute("stroke-width", "2");
+            circle.setAttribute("pointer-events", "none");
+            svg.appendChild(circle);
+            
+            const selTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            selTxt.setAttribute("x", x);
+            selTxt.setAttribute("y", y + 3.5);
+            selTxt.setAttribute("text-anchor", "middle");
+            selTxt.setAttribute("fill", "#ffffff");
+            selTxt.setAttribute("font-size", "10px");
+            selTxt.setAttribute("font-weight", "bold");
+            selTxt.setAttribute("pointer-events", "none");
+            selTxt.textContent = comp.name || 'P';
+            svg.appendChild(selTxt);
+        }
 
         const txtColor = comp.type === 'cable' ? "#ffffff" : "#000000";
         
@@ -1119,9 +1157,58 @@ function drawPlacedComponents(field, svg, simulationData, state) {
         
         const displayName = comp.type === 'inverter' && comp.power ? `${comp.name} (${comp.power})` : comp.name;
         txt.textContent = displayName;
-        svg.appendChild(txt);
+        
+        if (!isPistolSelected) {
+            svg.appendChild(txt);
+        }
+        
+        if (comp.type === 'inverter' && inverterOrders) {
+            const invUid = `${field.id}-${key}`;
+            const order = inverterOrders[invUid] !== undefined ? inverterOrders[invUid] : -1;
+            const orderText = order === -1 ? '—' : String(order);
+            
+            let circleColor = '#555555';
+            let textColor = '#ffffff';
+            if (order === 0) {
+                circleColor = '#00ffd2'; // яркий циан для 0-го порядка
+                textColor = '#000000';
+            } else if (order === 1) {
+                circleColor = '#00ffaa';
+                textColor = '#000000';
+            } else if (order === 2) {
+                circleColor = '#00b0ff';
+                textColor = '#ffffff';
+            } else if (order === 3) {
+                circleColor = '#ffd166';
+                textColor = '#000000';
+            } else if (order > 3) {
+                circleColor = '#ff6b00';
+                textColor = '#ffffff';
+            }
+            
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", x);
+            circle.setAttribute("cy", y);
+            circle.setAttribute("r", 10);
+            circle.setAttribute("fill", circleColor);
+            circle.setAttribute("stroke", "#ffffff");
+            circle.setAttribute("stroke-width", "1.5");
+            circle.setAttribute("pointer-events", "none");
+            svg.appendChild(circle);
+            
+            const ordTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            ordTxt.setAttribute("x", x);
+            ordTxt.setAttribute("y", y + 3.5);
+            ordTxt.setAttribute("text-anchor", "middle");
+            ordTxt.setAttribute("fill", textColor);
+            ordTxt.setAttribute("font-size", "10px");
+            ordTxt.setAttribute("font-weight", "bold");
+            ordTxt.setAttribute("pointer-events", "none");
+            ordTxt.textContent = orderText;
+            svg.appendChild(ordTxt);
+        }
 
-        if (isSimPistol) {
+        if (isSimPistol && !isPistolSelected) {
             const pUid = `${field.id}-${key}`;
             const pPower = pistolPowers[pUid] || 0;
             

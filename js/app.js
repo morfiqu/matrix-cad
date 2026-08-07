@@ -109,6 +109,8 @@ function updateCanvas() {
             isSimulationMode: appState.isSimulationMode,
             showPowerFlow: appState.showPowerFlow,
             showFlowArrows: appState.showFlowArrows,
+            showInverterOrder: appState.showInverterOrder,
+            hoveredPistolUid: appState.hoveredPistolUid,
             optimalPathHighlight: appState.optimalPathHighlight,
             selectedKeys: appState.selectedKeys,
             activeTool: appState.activeTool,
@@ -259,7 +261,7 @@ function handleCellClick(fieldId, r, c, suppressAlerts = false) {
     if (appState.activeTool === 'inverter') {
         if (c === 0 && r > 0 && r < field.rows - 1) {
             if (hasPathBlockers(field, 'row', r)) {
-                triggerAlert("Нельзя установить инвертор: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить инвертор: на пути линии находятся разделители или компоненты цепей!");
                 return;
             }
             const defaultNum = getLowestAvailableIndexGlobal('inverter');
@@ -271,7 +273,7 @@ function handleCellClick(fieldId, r, c, suppressAlerts = false) {
     } else if (appState.activeTool === 'pistol') {
         if (r === field.rows - 1 && c > 0 && c < field.cols - 1) {
             if (hasPathBlockers(field, 'col', c)) {
-                triggerAlert("Нельзя установить пистолет: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить пистолет: на пути линии находятся разделители или компоненты цепей!");
                 return;
             }
             const defaultNum = getLowestAvailableIndexGlobal('pistol');
@@ -297,12 +299,12 @@ function handleCellClick(fieldId, r, c, suppressAlerts = false) {
 
         if (pos === 'left') {
             if (hasPathBlockers(field, 'row', r)) {
-                triggerAlert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить цепь (NET): на пути линии находятся разделители или другие цепи!");
                 return;
             }
         } else if (pos === 'top' || pos === 'bottom') {
             if (hasPathBlockers(field, 'col', c)) {
-                triggerAlert("Нельзя установить клемму: на пути линии находятся разделители или клеммы!");
+                triggerAlert("Нельзя установить цепь (NET): на пути линии находятся разделители или другие цепи!");
                 return;
             }
         }
@@ -324,16 +326,16 @@ function handleCellClick(fieldId, r, c, suppressAlerts = false) {
 
         if (pos === 'middle') {
             if (hasRowWire && hasColWire) {
-                triggerAlert("Здесь пересечение шин! Клемма в середине поля ставится только на горизонтальную или вертикальную линию отдельно.");
+                triggerAlert("Здесь пересечение шин! Цепь (NET) в середине поля ставится только на горизонтальную или вертикальную линию отдельно.");
                 return;
             }
             if (!hasRowWire && !hasColWire) {
-                triggerAlert("Нельзя ставить клемму в середине поля, если здесь нет проходящей линии!");
+                triggerAlert("Нельзя ставить цепь (NET) в середине поля, если здесь нет проходящей линии!");
                 return;
             }
         }
         if (pos === 'right' && !hasRowWire) {
-            triggerAlert("Нельзя ставить клемму справа, если на этой строке нет линии!");
+            triggerAlert("Нельзя ставить цепь (NET) справа, если на этой строке нет линии!");
             return;
         }
 
@@ -401,7 +403,22 @@ function handleCellClick(fieldId, r, c, suppressAlerts = false) {
 }
 
 function handleCompMouseDown(e, fId, r, c, type, key) {
-    if (appState.isSimulationMode) return;
+    if (appState.isSimulationMode) {
+        if (e.button !== 0) return;
+        const field = appState.fields.find(f => f.id === fId);
+        const comp = field ? field.components[`${r}-${c}`] : null;
+        if (comp && comp.type === 'pistol' && appState.showInverterOrder) {
+            e.stopPropagation();
+            const pUid = `${fId}-${r}-${c}`;
+            if (appState.hoveredPistolUid === pUid) {
+                appState.hoveredPistolUid = null;
+            } else {
+                appState.hoveredPistolUid = pUid;
+            }
+            updateCanvas();
+        }
+        return;
+    }
     if (e.button !== 0) return;
     if (appState.activeTool === 'select') {
         const now = Date.now();
@@ -2208,323 +2225,158 @@ function _runSimulationDryRun() {
     };
 }
 
-// ── ENERGY ARBITRATION CASCADE (Каскадный энергетический арбитраж) ──
-// Tries to iteratively find a clean path by requesting lower-priority donors to release an inverter.
-// Checks correctness after each step using a simulation dry-run.
-// If no correct state can be found within the limit, rolls back to protect running sessions.
-function _runEnergyArbitration(newPistolUid) {
-    const parts = newPistolUid.split('-');
-    const demand = getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
-    if (demand <= 0) return false;
-
-    // 1. Save backup of the entire routing state (global fallback)
-    const backupRoutesGlobal = JSON.stringify(appState.activeAutoRoutes);
-    const rollbackGlobal = () => {
-        appState.activeAutoRoutes = JSON.parse(backupRoutesGlobal);
-        applyAutoConnections();
-    };
-
-    // Calculate maximum attempts based on total inverter count
-    let totalInvertersCount = 0;
-    appState.fields.forEach(f => {
-        for (let k in f.components) {
-            if (f.components[k].type === 'inverter') totalInvertersCount++;
-        }
-    });
-    const maxAttempts = Math.max(5, totalInvertersCount);
-    const mySoC = getSimPistolSoC(newPistolUid);
-    const triedCandidates = new Set();
-
-    console.log(`[Арбитраж] Запуск каскадного поиска для ${newPistolUid} (SoC ${mySoC.toFixed(1)}%), макс. попыток: ${maxAttempts}`);
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        // Step A: Try to find a route for ourselves using whatever is currently free
-        const routed = _routePistolFree(newPistolUid);
-        const check = _runSimulationDryRun();
-
-        const myRoute = appState.activeAutoRoutes[newPistolUid];
-        if (routed && !check.hasErrors && myRoute && myRoute.reachable) {
-            // Success! The requester is fully satisfied and the state is conflict-free.
-            console.log(`[Арбитраж] Успех на шаге ${attempt}! Путь для ${newPistolUid} проложен на полную мощность без ошибок.`);
-            return true;
-        }
-
-        // If we got here, we are either not routed, have errors, or are not fully satisfied (reachable === false).
-        // Let's find the next donor to steal from.
-        const discovery = findOptimalPath(appState.fields, newPistolUid, demand, new Set(), null, new Set());
-        if (!discovery || !discovery.usedInverters || discovery.usedInverters.length === 0) {
-            console.log(`[Арбитраж] Прервано на шаге ${attempt}: пистолет ${newPistolUid} физически не может достичь ни одного инвертора.`);
-            rollbackGlobal();
-            return false;
-        }
-
-        // Expand discovery buses so we know ALL physical buses we will touch (including cables on all sheets!)
-        const discoveryBusesExpanded = _expandCableClaims(discovery.usedBuses);
-
-        // Find the best donor candidate based on SoC, inverter/bus blocking, and priority
-        let bestDonorUid = null;
-        let bestDonorSoC = -1;
-        let bestInvToRelease = null;
-
-        const myCurrentInvUids = new Set();
-        if (myRoute && myRoute.usedInverters) {
-            myRoute.usedInverters.forEach(i => myCurrentInvUids.add(i.uid));
-        }
-
-        for (let pUid in appState.activeAutoRoutes) {
-            if (pUid === newPistolUid) continue;
-            if (triedCandidates.has(pUid)) continue; // Don't try the same donor twice
-
-            const donorRoute = appState.activeAutoRoutes[pUid];
-            const donorSoC = getSimPistolSoC(pUid);
-            if (donorSoC <= mySoC) continue; // Only steal from lower-priority cars (higher SoC)
-
-            let blocksInverter = null;
-            if (donorRoute.usedInverters) {
-                for (let i of donorRoute.usedInverters) {
-                    if (discovery.usedInverters.some(di => di.uid === i.uid)) {
-                        blocksInverter = i;
-                        break;
-                    }
-                }
-            }
-
-            let blocksBus = false;
-            if (donorRoute.usedBuses) {
-                for (let bus of donorRoute.usedBuses) {
-                    if (discoveryBusesExpanded.has(bus)) {
-                        blocksBus = true;
-                        break;
-                    }
-                }
-            }
-
-            if (blocksInverter || blocksBus) {
-                let score = donorSoC;
-                if (donorRoute.usedInverters && donorRoute.usedInverters.length >= 2) {
-                    score += 100;
-                }
-                if (blocksInverter) {
-                    score += 200;
-                    if (myCurrentInvUids.has(blocksInverter.uid)) {
-                        score += 1000;
-                    }
-                }
-                if (blocksBus) {
-                    score += 50;
-                }
-
-                if (score > bestDonorSoC) {
-                    bestDonorUid = pUid;
-                    bestDonorSoC = score;
-                    bestInvToRelease = blocksInverter;
-                }
-            }
-        }
-
-        if (!bestDonorUid) {
-            // No more candidates can be found.
-            // If the requester is already routed (even if not fully satisfied/reachable),
-            // and the state is conflict-free, we can accept this partial route as a success!
-            if (routed && !check.hasErrors && myRoute && myRoute.usedInverters && myRoute.usedInverters.length > 0) {
-                console.log(`[Арбитраж] Успех на шаге ${attempt}! Путь для ${newPistolUid} проложен частично (подключено ${myRoute.usedInverters.length} инв.), конфликт-фри.`);
-                return true;
-            }
-            console.log(`[Арбитраж] Прервано на шаге ${attempt}: не найдено доступных доноров для дальнейшего освобождения.`);
-            rollbackGlobal();
-            return false;
-        }
-
-        triedCandidates.add(bestDonorUid);
-        const realDonorSoC = getSimPistolSoC(bestDonorUid);
-        console.log(`[Арбитраж Попытка ${attempt}/${maxAttempts}] Высвобождаем ресурсы у донора ${bestDonorUid} (SoC ${realDonorSoC.toFixed(1)}%)`);
-
-        // Save local backup of the state before applying this iteration's change
-        const backupRoutesLocal = JSON.stringify(appState.activeAutoRoutes);
-
-        // Perform the steal:
-        // 1. Remove chosen inverter from donor's list of allowed/owned inverters
-        const donorRoute = appState.activeAutoRoutes[bestDonorUid];
-        if (bestInvToRelease) {
-            donorRoute.usedInverters = donorRoute.usedInverters.filter(i => i.uid !== bestInvToRelease.uid);
-        }
-
-        // 2. Completely clear donor's route to free all its buses/cables
-        donorRoute.usedContactors = [];
-        donorRoute.usedBuses = [];
-        donorRoute.pathSegments = [];
-        donorRoute.reachable = false;
-
-        // 3. Route the requester FIRST (claims its buses/cables/inverters before the donor does)
-        const requesterRouted = _routePistolFree(newPistolUid);
-
-        // 4. Re-route the donor using remaining resources
-        if (donorRoute.usedInverters.length > 0) {
-            const donorParts = bestDonorUid.split('-');
-            const donorDemand = getPistolDemand(donorParts[0], `${donorParts[1]}-${donorParts[2]}`);
-            const allowedForDonor = new Set(donorRoute.usedInverters.map(i => i.uid));
-            const { claimedInverters: claimedForDonor, claimedBuses: claimedBusesForDonor } = _getClaimedExcluding(bestDonorUid);
-            allowedForDonor.forEach(uid => claimedForDonor.delete(uid));
-
-            const donorResult = findOptimalPath(appState.fields, bestDonorUid, donorDemand, claimedForDonor, allowedForDonor, claimedBusesForDonor);
-            if (donorResult && donorResult.usedInverters && donorResult.usedInverters.length > 0) {
-                _storeRoute(bestDonorUid, donorResult);
-            }
-        }
-
-        // 5. Verify the new layout
-        const checkLocal = _runSimulationDryRun();
-        const myRouteLocal = appState.activeAutoRoutes[newPistolUid];
-
-        if (requesterRouted && !checkLocal.hasErrors && myRouteLocal && myRouteLocal.usedInverters && myRouteLocal.usedInverters.length > 0) {
-            // Keep this step's change
-            console.log(`[Арбитраж] Шаг ${attempt} успешно применен. Продолжаем каскад.`);
-        } else {
-            // Rollback this step's change and try another candidate
-            if (checkLocal.hasErrors) {
-                console.log(`[Арбитраж] Шаг ${attempt} привел к ошибкам симуляции: ${checkLocal.errors.join('; ')}. Откатываем этот шаг.`);
-            } else {
-                console.log(`[Арбитраж] Шаг ${attempt} не позволил проложить путь для запрашивающего. Откатываем этот шаг.`);
-            }
-            appState.activeAutoRoutes = JSON.parse(backupRoutesLocal);
-            applyAutoConnections();
-        }
-    }
-
-    // If we finished the loop, check if we have a valid partial route
-    const checkFinal = _runSimulationDryRun();
-    const myRouteFinal = appState.activeAutoRoutes[newPistolUid];
-    if (!checkFinal.hasErrors && myRouteFinal && myRouteFinal.usedInverters && myRouteFinal.usedInverters.length > 0) {
-        console.log(`[Арбитраж] Завершено. Путь проложен частично.`);
-        return true;
-    }
-
-    console.log(`[Арбитраж] Не удалось найти бесконфликтный путь за ${maxAttempts} попыток. Откатываемся к началу.`);
-    rollbackGlobal();
-    return false;
-}
-
-// ── PUBLIC EVENT: Car has arrived at pistolUid ─────────────────
-window.onCarArrival = function(pistolUid) {
+// ── GLOBAL PRIORITY-ORDERED ROUTING WITH PATH HYSTERESIS ──
+// Recalculates all active routes from scratch based on SoC priorities,
+// ensuring a minimum of 1 inverter per car (Phase 1) before satisfying surplus demand (Phase 2).
+// Applies path hysteresis by treating previously closed contactors as preferred (cost 1 vs 100).
+window.runGlobalPriorityRouting = function() {
+    if (!appState.isSimulationMode) return;
     if (!appState.activeAutoRoutes) appState.activeAutoRoutes = {};
 
-    const routed = _routePistolFree(pistolUid);
-    if (!routed && window.workSimState && window.workSimState.isActiveSimRun) {
-        // Free path not found — try energy arbitration
-        _runEnergyArbitration(pistolUid);
-    }
+    // 1. Snapshot the current routes
+    const oldRoutes = JSON.parse(JSON.stringify(appState.activeAutoRoutes));
 
-    if (window.updateCanvas) window.updateCanvas();
-};
-
-function _getOrangePistols() {
-    const orange = [];
-    if (appState && appState.fields) {
-        appState.fields.forEach(field => {
-            for (let key in field.components) {
-                const comp = field.components[key];
-                if (comp.type === 'pistol') {
-                    const uid = `${field.id}-${key}`;
-                    if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
-                        const route = appState.activeAutoRoutes[uid];
-                        if (!route || !route.reachable || !route.usedInverters || route.usedInverters.length === 0) {
-                            orange.push(uid);
-                        }
-                    }
-                }
-            }
-        });
-    }
-    return orange;
-}
-
-// ── PUBLIC EVENT: Car has departed from pistolUid ─────────────
-window.onCarDeparture = function(pistolUid) {
-    if (!appState.activeAutoRoutes) appState.activeAutoRoutes = {};
-
-    // Collect which inverters are being freed
-    const freedInverters = new Set();
-    const oldRoute = appState.activeAutoRoutes[pistolUid];
-    if (oldRoute && oldRoute.usedInverters) {
-        oldRoute.usedInverters.forEach(i => freedInverters.add(i.uid));
-    }
-
-    // Remove this pistol's route
-    delete appState.activeAutoRoutes[pistolUid];
-
-    console.log(`[Симуляция] Авто уехало с ${pistolUid}, освобождены инверторы: ${Array.from(freedInverters).join(', ')}`);
-
-    // Notify all orange pistols (those without a reachable route) that inverters are freed.
-    // They try to claim the freed resources in order of SoC priority (lowest SoC first).
-    if (freedInverters.size > 0) {
-        const orangePistols = _getOrangePistols();
-        // Sort by SoC ascending (most needy first)
-        orangePistols.sort((a, b) => getSimPistolSoC(a) - getSimPistolSoC(b));
-
-        orangePistols.forEach(pUid => {
-            const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
-            const routed = _routePistolFree(pUid);
-            if (routed) {
-                const check = _runSimulationDryRun();
-                if (check.hasErrors) {
-                    // Rollback if this newly routed orange path introduces conflicts
-                    console.warn(`[Симуляция-Orange] Откатываем оранжевый пистолет ${pUid} из-за ошибки в симуляторе.`);
-                    appState.activeAutoRoutes = JSON.parse(backupRoutes);
-                    applyAutoConnections();
-                } else {
-                    console.log(`[Симуляция-Orange] Оранжевый пистолет ${pUid} занял свободные инверторы без ошибок.`);
-                }
-            }
-        });
-    }
-
-    if (window.updateCanvas) window.updateCanvas();
-};
-
-// ── initializeSimulationRoutes: called ONCE when entering simulation mode ──
-// Sets up initial routes for any pistol that already has autoConnect=true.
-function initializeSimulationRoutes() {
+    // 2. Clear current routes
     appState.activeAutoRoutes = {};
 
-    // Collect all pistols with autoConnect enabled
-    const autoPistols = [];
+    // 3. Find all active pistols
+    const activePistols = [];
     appState.fields.forEach(field => {
         for (let key in field.components) {
             const comp = field.components[key];
             if (comp.type === 'pistol') {
                 const uid = `${field.id}-${key}`;
-                if (appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect) {
-                    autoPistols.push({ uid, field, key });
+                const isSimConnected = window.workSimActiveConnections && window.workSimActiveConnections[uid];
+                const isAutoConnect = appState.pistolDemands[uid] && appState.pistolDemands[uid].autoConnect;
+                if (isSimConnected || isAutoConnect) {
+                    activePistols.push(uid);
                 }
             }
         }
     });
 
-    // Sort by FIFO order for initial manual-mode setup
-    autoPistols.sort((a, b) => {
-        const idxA = (appState.autoConnectOrder || []).indexOf(a.uid);
-        const idxB = (appState.autoConnectOrder || []).indexOf(b.uid);
-        if (idxA === -1 && idxB === -1) return a.uid.localeCompare(b.uid);
-        if (idxA === -1) return 1;
-        if (idxB === -1) return -1;
-        return idxA - idxB;
-    });
+    // 4. Sort by SoC ascending (most needy first)
+    activePistols.sort((a, b) => getSimPistolSoC(a) - getSimPistolSoC(b));
 
-    autoPistols.forEach(p => {
-        const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
-        const routed = _routePistolFree(p.uid);
-        if (routed) {
-            const check = _runSimulationDryRun();
-            if (check.hasErrors) {
-                console.warn(`[Инициализация-Conflict] Откатываем начальный путь для ${p.uid} из-за ошибок.`);
-                appState.activeAutoRoutes = JSON.parse(backupRoutes);
-                applyAutoConnections();
-            }
+    const claimedInverters = new Set();
+    const claimedBuses = new Set();
+
+    // Helper to get preferred contactors for a pistol
+    function getPrefContactors(pUid) {
+        const pref = new Set();
+        if (oldRoutes[pUid] && oldRoutes[pUid].usedContactors) {
+            oldRoutes[pUid].usedContactors.forEach(c => pref.add(c));
+        }
+        return pref;
+    }
+
+    // Helper to get demand for a pistol
+    function getDemand(pUid) {
+        const parts = pUid.split('-');
+        return getPistolDemand(parts[0], `${parts[1]}-${parts[2]}`);
+    }
+
+    // PHASE 1: Guaranteed Minimum (1 inverter per active pistol)
+    activePistols.forEach(pUid => {
+        const pref = getPrefContactors(pUid);
+        // Search with targetPower = 0.1 to get exactly 1 inverter
+        const result = findOptimalPath(appState.fields, pUid, 0.1, claimedInverters, null, claimedBuses, pref);
+        if (result && result.usedInverters && result.usedInverters.length > 0) {
+            // Save temporary route
+            appState.activeAutoRoutes[pUid] = {
+                usedInverters: [result.usedInverters[0]], // take the first inverter found
+                usedContactors: result.usedContactors,
+                usedBuses: Array.from(result.usedBuses),
+                pathSegments: Array.from(result.pathSegments),
+                reachable: false
+            };
+            // Add to claimed
+            claimedInverters.add(result.usedInverters[0].uid);
+            result.usedBuses.forEach(b => claimedBuses.add(b));
         }
     });
+
+    // PHASE 2: Distribute remaining surplus inverters to satisfy demand
+    activePistols.forEach(pUid => {
+        const demand = getDemand(pUid);
+        const route = appState.activeAutoRoutes[pUid];
+        
+        let currentPower = 0;
+        if (route && route.usedInverters) {
+            route.usedInverters.forEach(inv => currentPower += inv.power);
+        }
+
+        if (currentPower >= demand) {
+            // Already satisfied
+            if (route) route.reachable = true;
+            return;
+        }
+
+        // Needs more power. Exclude P's current claims to allow full re-route
+        const otherClaimedInverters = new Set(claimedInverters);
+        const otherClaimedBuses = new Set(claimedBuses);
+        if (route) {
+            route.usedInverters.forEach(inv => otherClaimedInverters.delete(inv.uid));
+            route.usedBuses.forEach(b => otherClaimedBuses.delete(b));
+        }
+
+        const pref = getPrefContactors(pUid);
+        const result = findOptimalPath(appState.fields, pUid, demand, otherClaimedInverters, null, otherClaimedBuses, pref);
+        if (result && result.usedInverters && result.usedInverters.length > 0) {
+            // Update route
+            appState.activeAutoRoutes[pUid] = {
+                usedInverters: result.usedInverters,
+                usedContactors: result.usedContactors,
+                usedBuses: Array.from(result.usedBuses),
+                pathSegments: Array.from(result.pathSegments),
+                reachable: result.reachable
+            };
+            // Update global claims
+            result.usedInverters.forEach(inv => claimedInverters.add(inv.uid));
+            result.usedBuses.forEach(b => claimedBuses.add(b));
+        } else if (route) {
+            // Fallback to Phase 1 route
+            route.reachable = false;
+        }
+    });
+
+    // 5. Apply connections to the actual contacts
+    applyAutoConnections();
+
+    // 6. Verify with Dry Run
+    const check = _runSimulationDryRun();
+    if (check.hasErrors) {
+        console.warn("[Арбитраж] Ошибки при глобальной приоритетной трассировке, откат к старой конфигурации.", check.errors);
+        appState.activeAutoRoutes = oldRoutes;
+        applyAutoConnections();
+    }
+};
+
+// ── PUBLIC EVENT: Car has arrived at pistolUid ─────────────────
+window.onCarArrival = function(pistolUid) {
+    window.runGlobalPriorityRouting();
+    if (window.updateCanvas) window.updateCanvas();
+};
+
+// ── PUBLIC EVENT: Car has departed from pistolUid ─────────────
+window.onCarDeparture = function(pistolUid) {
+    if (appState.activeAutoRoutes) {
+        delete appState.activeAutoRoutes[pistolUid];
+    }
+    window.runGlobalPriorityRouting();
+    if (window.updateCanvas) window.updateCanvas();
+};
+
+// ── initializeSimulationRoutes: called ONCE when entering simulation mode ──
+function initializeSimulationRoutes() {
+    window.runGlobalPriorityRouting();
 }
 
 function updateRouteForPistol(uid) {
+    if (appState.isSimulationMode) {
+        window.runGlobalPriorityRouting();
+        return;
+    }
     if (!appState.activeAutoRoutes) appState.activeAutoRoutes = {};
     
     const backupRoutes = JSON.stringify(appState.activeAutoRoutes);
@@ -2541,6 +2393,10 @@ function updateRouteForPistol(uid) {
 }
 
 function recalculateOrangeRoutes() {
+    if (appState.isSimulationMode) {
+        window.runGlobalPriorityRouting();
+        return;
+    }
     if (!appState.activeAutoRoutes) return;
     
     const orangePistols = _getOrangePistols();
@@ -3064,8 +2920,17 @@ function renderPistolDemandTable(simulationData) {
             let displayCurrent = settings.current;
             if (isSimRun) {
                 if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
-                    displayVoltage = window.workSimActiveConnections[uid].car.voltage;
-                    displayCurrent = window.workSimActiveConnections[uid].car.current;
+                    const conn = window.workSimActiveConnections[uid];
+                    if (window.getCarVoltageAtSoC) {
+                        displayVoltage = window.getCarVoltageAtSoC(conn.car, conn.currentSoC);
+                    } else {
+                        displayVoltage = conn.car.voltage || 0;
+                    }
+                    if (window.getCarCurrentAtSoC) {
+                        displayCurrent = window.getCarCurrentAtSoC(conn.car, conn.currentSoC);
+                    } else {
+                        displayCurrent = conn.car.current || 0;
+                    }
                 } else {
                     displayVoltage = 0;
                     displayCurrent = 0;
@@ -3670,6 +3535,14 @@ window.setMode = function(isSim) {
     if (!isSim) {
         appState.optimalPathHighlight = null;
         appState.activeAutoRoutes = {};
+        appState.hoveredPistolUid = null;
+        appState.showInverterOrder = false;
+        
+        const chk = document.getElementById('toggle-debug-inverter-order');
+        if (chk) {
+            chk.checked = false;
+            chk.disabled = true;
+        }
         
         // Clean up work simulation and hide panels when switching back to design mode
         if (window.cleanupWorkSimulation) {
@@ -3677,6 +3550,11 @@ window.setMode = function(isSim) {
         }
     } else {
         initializeSimulationRoutes();
+        
+        const chk = document.getElementById('toggle-debug-inverter-order');
+        if (chk) {
+            chk.disabled = false;
+        }
     }
     document.getElementById('mode-btn-design')?.classList.toggle('active', !isSim);
     document.getElementById('mode-btn-sim')?.classList.toggle('active', isSim);
@@ -3756,6 +3634,144 @@ window.toggleFlowArrows = function(checked) {
         updateCanvas();
     }
 };
+
+window.toggleDebugPanel = function() {
+    const dbgPanel = document.getElementById('debug-panel');
+    if (dbgPanel) {
+        const isHidden = dbgPanel.style.display === 'none';
+        dbgPanel.style.display = isHidden ? 'block' : 'none';
+        
+        const chk = document.getElementById('toggle-debug-inverter-order');
+        if (chk) {
+            chk.disabled = !appState.isSimulationMode;
+            chk.checked = appState.showInverterOrder;
+        }
+    }
+};
+
+window.toggleInverterOrder = function(checked) {
+    appState.showInverterOrder = checked;
+    updateCanvas();
+};
+
+window.toggleWindowsMenu = function(event) {
+    event.stopPropagation();
+    const content = document.getElementById('windows-dropdown-content');
+    if (content) {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'block' : 'none';
+    }
+};
+
+window.clickMenuDebug = function(event) {
+    event.stopPropagation();
+    const content = document.getElementById('windows-dropdown-content');
+    if (content) content.style.display = 'none';
+    
+    window.toggleDebugPanel();
+};
+
+window.clickMenuCars = function(event) {
+    event.stopPropagation();
+    const content = document.getElementById('windows-dropdown-content');
+    if (content) content.style.display = 'none';
+    
+    if (!appState.isSimulationMode) {
+        alert("Окно автопарка доступно только в режиме симуляции.");
+        return;
+    }
+    if (!window.workSimState || !window.workSimState.isActiveSimRun) {
+        alert("Пожалуйста, сначала включите симуляцию работы.");
+        return;
+    }
+    const panel = document.getElementById('work-sim-panel');
+    if (panel) {
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    }
+};
+
+window.clickMenuDash = function(event) {
+    event.stopPropagation();
+    const content = document.getElementById('windows-dropdown-content');
+    if (content) content.style.display = 'none';
+    
+    if (!appState.isSimulationMode) {
+        alert("Панель управления доступна только в режиме симуляции.");
+        return;
+    }
+    if (!window.workSimState || !window.workSimState.isActiveSimRun) {
+        alert("Пожалуйста, сначала включите симуляцию работы.");
+        return;
+    }
+    const dash = document.getElementById('work-sim-dash-panel');
+    if (dash) {
+        dash.style.display = dash.style.display === 'none' ? 'flex' : 'none';
+    }
+};
+
+// Close dropdown if user clicks outside
+window.addEventListener('click', function(event) {
+    const content = document.getElementById('windows-dropdown-content');
+    if (content && content.style.display !== 'none') {
+        content.style.display = 'none';
+    }
+});
+
+function makeElementDraggable(elm, handle) {
+    let isDragging = false;
+    let startX, startY;
+    let startLeft, startTop;
+
+    handle.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // Left click only
+        e.preventDefault();
+
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        
+        startLeft = elm.offsetLeft;
+        startTop = elm.offsetTop;
+        
+        elm.style.transition = 'none'; // Disable transition for instant drag response
+
+        const onMouseMove = (ev) => {
+            if (!isDragging) return;
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            
+            let newLeft = startLeft + dx;
+            let newTop = startTop + dy;
+
+            // Constrain within viewport boundaries
+            const maxLeft = window.innerWidth - elm.offsetWidth;
+            const maxTop = window.innerHeight - elm.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            elm.style.left = newLeft + 'px';
+            elm.style.top = newTop + 'px';
+            elm.style.right = 'auto';
+            elm.style.bottom = 'auto';
+        };
+
+        const onMouseUp = () => {
+            isDragging = false;
+            elm.style.transition = ''; // Restore transition
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+}
+
+const dbgPanelEl = document.getElementById('debug-panel');
+const dbgPanelHandleEl = document.getElementById('debug-panel-handle');
+if (dbgPanelEl && dbgPanelHandleEl) {
+    makeElementDraggable(dbgPanelEl, dbgPanelHandleEl);
+}
 
 window.fillAllContactorsGlobal = fillAllContactorsGlobal;
 window.copySelected = copySelected;

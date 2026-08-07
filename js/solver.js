@@ -31,6 +31,11 @@ function getPistolDemand(fieldId, key) {
         if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
             const conn = window.workSimActiveConnections[uid];
             if (conn.limit !== undefined) return conn.limit;
+            // Use curve-based demand at current SoC if available
+            // This ensures freed inverter capacity can be given to waiting pistols
+            if (window.getCarMaxPowerAtSoC && conn.car && conn.currentSoC !== undefined) {
+                return window.getCarMaxPowerAtSoC(conn.car, conn.currentSoC);
+            }
             return (conn.car.voltage * conn.car.current) / 1000;
         }
         return 0; // No demand if empty
@@ -51,7 +56,11 @@ function getPistolVoltage(fieldId, key) {
     const uid = `${fieldId}-${key}`;
     if (window.workSimState && window.workSimState.isActiveSimRun) {
         if (window.workSimActiveConnections && window.workSimActiveConnections[uid]) {
-            return window.workSimActiveConnections[uid].car.voltage;
+            const conn = window.workSimActiveConnections[uid];
+            if (window.getCarVoltageAtSoC) {
+                return window.getCarVoltageAtSoC(conn.car, conn.currentSoC);
+            }
+            return conn.car.voltage;
         }
         return 500;
     }
@@ -822,7 +831,7 @@ function calculateSimulation(fields) {
  * @param {Array} fields - All field objects
  * @param {string} pistolUid - Pistol unique ID: "{fieldId}-{r}-{c}"
  */
-function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null, allowedInverters = null, claimedBuses = null) {
+function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null, allowedInverters = null, claimedBuses = null, preferredContactors = null) {
     const parts = pistolUid.split('-');
     const pistolFieldId = parseInt(parts[0]);
     const pistolR = parseInt(parts[1]);
@@ -838,13 +847,13 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
     // Seed BFS: start in col mode moving upward from the pistol cell
     if (pistolC > 0 && pistolC < pistolField.cols - 1) {
         // Move up from pistol row
-        if (pistolR > 1) {
+        if (pistolR > 0) {
             const nextR = pistolR - 1;
             const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${nextR}`;
             queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [], cost: 0, cables: [] });
         }
         // Move down from pistol row (edge case topologies)
-        if (pistolR < pistolField.rows - 2) {
+        if (pistolR < pistolField.rows - 1) {
             const nextR = pistolR + 1;
             const segId = `${pistolFieldId}-wire-col-p-seg-${pistolC}-${pistolR}`;
             queue.push({ fieldId: pistolFieldId, type: 'col', r: nextR, c: pistolC, segments: [segId], breakers: [], transitions: [], cost: 0, cables: [] });
@@ -852,6 +861,7 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
     }
 
     while (queue.length > 0) {
+        queue.sort((a, b) => a.cost - b.cost);
         const current = queue.shift();
         const nodeKey = `${current.fieldId}-${current.type}-${current.r}-${current.c}`;
         if (visitedNodes.has(nodeKey)) continue;
@@ -1003,21 +1013,27 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
                     if (!nextTransitions.includes(ctcGlobalKey)) {
                         nextTransitions.push(ctcGlobalKey);
                     }
-                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost + 100, cables: current.cables || [] });
+                    const isPref = preferredContactors && preferredContactors.has(ctcGlobalKey);
+                    const transitionCost = isPref ? 1 : 100;
+                    queue.push({ fieldId: current.fieldId, type: 'row', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost + transitionCost, cables: current.cables || [] });
                 }
             }
 
             // Continue up/down along col wire (apply breaker penalty if traversing a breaker: +100)
             if (current.c > 0 && current.c < f.cols - 1) {
-                const breakerPenalty = (ctc && ctc.type === 'vertical') ? 100 : 0;
+                let breakerPenalty = 0;
+                if (ctc && ctc.type === 'vertical') {
+                    const isPref = preferredContactors && preferredContactors.has(ctcGlobalKey);
+                    breakerPenalty = isPref ? 1 : 100;
+                }
                 // Up
-                if (current.r > 1) {
+                if (current.r > 0) {
                     const nextR = current.r - 1;
                     const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${nextR}`;
                     queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + breakerPenalty, cables: current.cables || [] });
                 }
                 // Down
-                if (current.r < f.rows - 2) {
+                if (current.r < f.rows - 1) {
                     const nextR = current.r + 1;
                     const segId = `${current.fieldId}-wire-col-p-seg-${current.c}-${current.r}`;
                     queue.push({ fieldId: current.fieldId, type: 'col', r: nextR, c: current.c, segments: [...current.segments, segId], breakers: currentBreakers, transitions: currentTransitions, cost: current.cost + breakerPenalty, cables: current.cables || [] });
@@ -1033,13 +1049,19 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
                     if (!nextTransitions.includes(ctcGlobalKey)) {
                         nextTransitions.push(ctcGlobalKey);
                     }
-                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost + 100, cables: current.cables || [] });
+                    const isPref = preferredContactors && preferredContactors.has(ctcGlobalKey);
+                    const transitionCost = isPref ? 1 : 100;
+                    queue.push({ fieldId: current.fieldId, type: 'col', r: current.r, c: current.c, segments: current.segments, breakers: currentBreakers, transitions: nextTransitions, cost: current.cost + transitionCost, cables: current.cables || [] });
                 }
             }
 
             // Continue left/right along row wire (apply breaker penalty if traversing a breaker: +100)
             if (current.r > 0 && current.r < f.rows - 1) {
-                const breakerPenalty = (ctc && ctc.type === 'horizontal') ? 100 : 0;
+                let breakerPenalty = 0;
+                if (ctc && ctc.type === 'horizontal') {
+                    const isPref = preferredContactors && preferredContactors.has(ctcGlobalKey);
+                    breakerPenalty = isPref ? 1 : 100;
+                }
                 // Left
                 if (current.c > 0) {
                     const nextC = current.c - 1;
@@ -1130,7 +1152,7 @@ function findOptimalPath(fields, pistolUid, targetPower, claimedInverters = null
 
     return {
         pathSegments,
-        usedInverters: selected.map(inv => ({ uid: inv.uid, name: inv.name, power: inv.power })),
+        usedInverters: selected.map(inv => ({ uid: inv.uid, name: inv.name, power: inv.power, order: (inv.breakers ? inv.breakers.length : 0) + (inv.transitions ? inv.transitions.length : 0) })),
         usedContactors,
         usedBuses,
         reachable: currentPower >= targetPower

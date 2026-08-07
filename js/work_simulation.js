@@ -5,26 +5,222 @@
 (function() {
     // Initial default cars config
     window.workSimCars = [
-        { brand: 'Tesla Model Y LR', capacity: 75, voltage: 400, current: 250, share: 10, socMin: 8, socMax: 25 },
-        { brand: 'Tesla Model 3 Perf', capacity: 79, voltage: 400, current: 250, share: 8, socMin: 10, socMax: 30 },
-        { brand: 'Porsche Taycan Plus', capacity: 93.4, voltage: 800, current: 330, share: 3, socMin: 5, socMax: 20 },
-        { brand: 'Hyundai Ioniq 5', capacity: 77.4, voltage: 800, current: 290, share: 6, socMin: 8, socMax: 25 },
-        { brand: 'Kia EV6 LR', capacity: 77.4, voltage: 800, current: 290, share: 5, socMin: 8, socMax: 25 },
-        { brand: 'Nissan Leaf e+', capacity: 62, voltage: 350, current: 150, share: 8, socMin: 10, socMax: 35 },
-        { brand: 'Audi e-tron 55', capacity: 95, voltage: 400, current: 375, share: 5, socMin: 10, socMax: 30 },
-        { brand: 'BMW i4 M50', capacity: 83.9, voltage: 400, current: 500, share: 5, socMin: 10, socMax: 30 },
-        { brand: 'Zeekr 001', capacity: 100, voltage: 800, current: 400, share: 4, socMin: 5, socMax: 20 },
-        { brand: 'BYD Han EV', capacity: 85.4, voltage: 570, current: 210, share: 5, socMin: 10, socMax: 35 },
-        { brand: 'Volkswagen ID.4 Pro', capacity: 77, voltage: 400, current: 310, share: 7, socMin: 10, socMax: 30 },
-        { brand: 'Volkswagen ID.3 Pro', capacity: 58, voltage: 400, current: 250, share: 6, socMin: 10, socMax: 35 },
-        { brand: 'Chevrolet Bolt EV', capacity: 65, voltage: 350, current: 150, share: 5, socMin: 10, socMax: 30 },
-        { brand: 'Renault Zoe E-Tech', capacity: 52, voltage: 400, current: 125, share: 5, socMin: 12, socMax: 40 },
-        { brand: 'Mercedes-Benz EQS 450', capacity: 107.8, voltage: 400, current: 500, share: 3, socMin: 8, socMax: 25 },
-        { brand: 'Peugeot e-208', capacity: 50, voltage: 400, current: 250, share: 4, socMin: 10, socMax: 35 },
-        { brand: 'Polestar 2 LR', capacity: 78, voltage: 400, current: 375, share: 4, socMin: 8, socMax: 30 },
-        { brand: 'Ford Mustang Mach-E', capacity: 88, voltage: 400, current: 375, share: 4, socMin: 10, socMax: 30 },
-        { brand: 'Tesla Model S Plaid', capacity: 100, voltage: 400, current: 250, share: 2, socMin: 5, socMax: 20 },
-        { brand: 'Audi e-tron GT', capacity: 93.4, voltage: 800, current: 330, share: 1, socMin: 5, socMax: 20 }
+        {
+            brand: 'Tesla Model Y LR',
+            capacity: 78,
+            share: 10,
+            socMin: 8,
+            socMax: 25,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [625, 625, 610, 560, 470, 360, 250, 170, 95, 45]
+        },
+        {
+            brand: 'Tesla Model 3 Perf',
+            capacity: 78,
+            share: 8,
+            socMin: 10,
+            socMax: 30,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [625, 625, 610, 560, 470, 360, 250, 170, 95, 45]
+        },
+        {
+            brand: 'Tesla Model S Plaid',
+            capacity: 100,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [625, 625, 615, 570, 480, 370, 260, 180, 100, 50]
+        },
+        {
+            brand: 'Porsche Taycan',
+            capacity: 105,
+            share: 4,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [380, 380, 380, 360, 320, 250, 180, 120, 70, 35]
+        },
+        {
+            brand: 'Audi e-tron GT',
+            capacity: 105,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [380, 380, 380, 360, 320, 250, 180, 120, 70, 35]
+        },
+        {
+            brand: 'Hyundai Ioniq 5',
+            capacity: 84,
+            share: 6,
+            socMin: 8,
+            socMax: 25,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [350, 350, 350, 330, 280, 220, 160, 105, 60, 30]
+        },
+        {
+            brand: 'Kia EV6',
+            capacity: 84,
+            share: 5,
+            socMin: 8,
+            socMax: 25,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [350, 350, 350, 330, 280, 220, 160, 105, 60, 30]
+        },
+        {
+            brand: 'BMW i4',
+            capacity: 83.9,
+            share: 5,
+            socMin: 10,
+            socMax: 30,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [500, 500, 480, 430, 360, 280, 200, 140, 80, 40]
+        },
+        {
+            brand: 'Mercedes EQS',
+            capacity: 118,
+            share: 4,
+            socMin: 8,
+            socMax: 25,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [500, 500, 490, 450, 390, 310, 220, 150, 90, 45]
+        },
+        {
+            brand: 'Volkswagen ID.4',
+            capacity: 77,
+            share: 7,
+            socMin: 10,
+            socMax: 30,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [330, 330, 315, 285, 240, 185, 130, 90, 50, 25]
+        },
+        {
+            brand: 'Volkswagen ID.3',
+            capacity: 58,
+            share: 6,
+            socMin: 10,
+            socMax: 35,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [300, 300, 285, 255, 215, 165, 115, 80, 45, 22]
+        },
+        {
+            brand: 'Polestar 2',
+            capacity: 78,
+            share: 4,
+            socMin: 8,
+            socMax: 30,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [400, 400, 390, 350, 300, 230, 165, 110, 65, 30]
+        },
+        {
+            brand: 'Ford Mustang Mach-E',
+            capacity: 88,
+            share: 4,
+            socMin: 10,
+            socMax: 30,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [400, 400, 390, 350, 300, 230, 165, 110, 65, 30]
+        },
+        {
+            brand: 'Nissan Leaf',
+            capacity: 62,
+            share: 7,
+            socMin: 10,
+            socMax: 35,
+            voltages: [310, 320, 328, 335, 340, 345, 348, 350, 352, 354],
+            currents: [150, 150, 140, 125, 105, 85, 65, 45, 30, 15]
+        },
+        {
+            brand: 'Renault Zoe',
+            capacity: 52,
+            share: 5,
+            socMin: 12,
+            socMax: 40,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [125, 125, 120, 110, 95, 80, 60, 40, 25, 12]
+        },
+        {
+            brand: 'Peugeot e-208',
+            capacity: 50,
+            share: 4,
+            socMin: 10,
+            socMax: 35,
+            voltages: [355, 364, 372, 379, 385, 390, 395, 400, 405, 410],
+            currents: [280, 280, 265, 240, 200, 155, 110, 75, 40, 20]
+        },
+        {
+            brand: 'Xiaomi YU7 Max',
+            capacity: 96,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [600, 600, 600, 570, 500, 400, 300, 190, 110, 55]
+        },
+        {
+            brand: 'Xiaomi SU7 Max',
+            capacity: 96,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [600, 600, 600, 570, 500, 400, 300, 190, 110, 55]
+        },
+        {
+            brand: 'Zeekr 001 (новый)',
+            capacity: 100,
+            share: 4,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [700, 700, 680, 630, 560, 450, 330, 220, 130, 60]
+        },
+        {
+            brand: 'Xpeng G9',
+            capacity: 98,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [580, 580, 570, 530, 470, 380, 280, 180, 100, 50]
+        },
+        {
+            brand: 'NIO ET9',
+            capacity: 120,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [800, 815, 830, 845, 860, 875, 890, 905, 920, 935],
+            currents: [600, 600, 590, 550, 490, 390, 290, 190, 110, 55]
+        },
+        {
+            brand: 'Li Auto i8',
+            capacity: 102,
+            share: 3,
+            socMin: 5,
+            socMax: 20,
+            voltages: [710, 723, 736, 748, 760, 772, 784, 796, 808, 820],
+            currents: [520, 520, 510, 470, 410, 320, 230, 150, 85, 42]
+        },
+        {
+            brand: 'BYD Han L',
+            capacity: 100,
+            share: 2,
+            socMin: 5,
+            socMax: 20,
+            voltages: [900, 918, 936, 954, 972, 990, 1008, 1026, 1044, 1060],
+            currents: [1000, 900, 800, 700, 600, 500, 380, 250, 140, 65]
+        },
+        {
+            brand: 'BYD Tang L',
+            capacity: 100,
+            share: 1,
+            socMin: 5,
+            socMax: 20,
+            voltages: [900, 918, 936, 954, 972, 990, 1008, 1026, 1044, 1060],
+            currents: [1000, 900, 800, 700, 600, 500, 380, 250, 140, 65]
+        }
     ];
 
     // Simulation Time and Speed State
@@ -50,6 +246,62 @@
     let preSimAutoConnectStates = {};
     let preSimAutoConnectOrder = [];
 
+    /**
+     * Ensure the car has profile arrays (voltages and currents) for 10 SoC intervals.
+     */
+    function ensureCarProfiles(car) {
+        if (!car.voltages || car.voltages.length !== 10) {
+            const baseV = car.voltage || 400;
+            car.voltages = [];
+            // Linear voltage increase from 90% to 102% of base voltage
+            for (let i = 0; i < 10; i++) {
+                const pct = i / 9;
+                car.voltages.push(Math.round(baseV * (0.9 + 0.12 * pct)));
+            }
+        }
+        if (!car.currents || car.currents.length !== 10) {
+            const baseI = car.current || 250;
+            // Typical current drop multipliers for charging curves:
+            // 100% current down to 10% current near 100% SoC
+            const multipliers = [1.0, 1.0, 0.95, 0.85, 0.70, 0.55, 0.40, 0.28, 0.18, 0.10];
+            car.currents = [];
+            for (let i = 0; i < 10; i++) {
+                car.currents.push(Math.round(baseI * multipliers[i]));
+            }
+        }
+    }
+    window.ensureCarProfiles = ensureCarProfiles;
+
+    /**
+     * Get dynamic voltage for a car at specific SoC.
+     */
+    function getCarVoltageAtSoC(car, soc) {
+        ensureCarProfiles(car);
+        const idx = Math.min(9, Math.max(0, Math.floor(soc / 10)));
+        return car.voltages[idx];
+    }
+    window.getCarVoltageAtSoC = getCarVoltageAtSoC;
+
+    /**
+     * Get dynamic current limit for a car at specific SoC.
+     */
+    function getCarCurrentAtSoC(car, soc) {
+        ensureCarProfiles(car);
+        const idx = Math.min(9, Math.max(0, Math.floor(soc / 10)));
+        return car.currents[idx];
+    }
+    window.getCarCurrentAtSoC = getCarCurrentAtSoC;
+
+    /**
+     * Interpolate the car's maximum charging power (kW) at the given SoC (%).
+     */
+    function getCarMaxPowerAtSoC(car, soc) {
+        const v = getCarVoltageAtSoC(car, soc);
+        const i = getCarCurrentAtSoC(car, soc);
+        return (v * i) / 1000;
+    }
+    window.getCarMaxPowerAtSoC = getCarMaxPowerAtSoC;
+
     let currentDocks = {
         'work-sim-panel': 'floating',
         'work-sim-dash-panel': 'floating'
@@ -59,6 +311,14 @@
     function injectPanels() {
         if (document.getElementById('work-sim-panel')) return;
 
+        // Populate dynamic profiles for default cars and remove legacy rudiments
+        window.workSimCars.forEach(car => {
+            ensureCarProfiles(car);
+            delete car.voltage;
+            delete car.current;
+            delete car.curve;
+        });
+
         const container = document.getElementById('app-layout') || document.body;
 
         // Panel 1: Cars Fleet Table
@@ -66,16 +326,16 @@
         panel.id = 'work-sim-panel';
         panel.className = 'work-sim-panel floating';
         panel.style.display = 'none';
-        panel.style.left = 'calc(50% - 410px)';
+        panel.style.left = 'calc(50% - 460px)'; // Adjusted left offset to balance the new 450px width
         panel.style.top = '100px';
-        panel.style.width = '400px';
+        panel.style.width = '450px'; // Enlarged from 400px
         panel.style.height = '420px';
 
         panel.innerHTML = `
             <div class="work-sim-header" id="work-sim-handle">
                 <span class="work-sim-title">🚗 Автопарк симуляции</span>
                 <div class="work-sim-actions">
-                    <button class="work-sim-btn-icon" onclick="toggleWorkSimulationPanel()">✕</button>
+                    <button class="work-sim-btn-icon" onclick="document.getElementById('work-sim-panel').style.display='none';">✕</button>
                 </div>
             </div>
             <div class="work-sim-content">
@@ -92,12 +352,11 @@
                         <thead>
                             <tr>
                                 <th>Марка</th>
-                                <th style="width: 48px; text-align: center;">C, кВтч</th>
-                                <th style="width: 42px; text-align: center;">U, В</th>
-                                <th style="width: 42px; text-align: center;">I, А</th>
-                                <th style="width: 42px; text-align: center;">Доля, %</th>
+                                <th style="width: 70px; text-align: center;">C, кВтч</th>
+                                <th style="width: 55px; text-align: center;">Доля, %</th>
                                 <th style="width: 90px; text-align: center;">SoC, % (мин-макс)</th>
-                                <th style="width: 25px;"></th>
+                                <th style="width: 80px; text-align: center;">Мощность</th>
+                                <th style="width: 30px;"></th>
                             </tr>
                         </thead>
                         <tbody id="work-sim-cars-tbody">
@@ -129,7 +388,7 @@
             <div class="work-sim-header" id="work-sim-dash-handle">
                 <span class="work-sim-title">⏱️ Панель управления</span>
                 <div class="work-sim-actions">
-                    <button class="work-sim-btn-icon" onclick="toggleWorkSimulationPanel()">✕</button>
+                    <button class="work-sim-btn-icon" onclick="document.getElementById('work-sim-dash-panel').style.display='none';">✕</button>
                 </div>
             </div>
             <div class="work-sim-content" style="gap: 10px;">
@@ -185,8 +444,72 @@
         `;
         container.appendChild(dash);
         
+        // Panel 3: Car Profile Editor Modal
+        const editorModal = document.createElement('div');
+        editorModal.id = 'car-profile-editor-modal';
+        editorModal.className = 'work-sim-panel floating';
+        editorModal.style.display = 'none';
+        editorModal.style.left = 'calc(50% - 350px)';
+        editorModal.style.top = '120px';
+        editorModal.style.width = '700px';
+        editorModal.style.height = '520px';
+        editorModal.style.zIndex = '10002';
+        editorModal.style.flexDirection = 'column';
+
+        editorModal.innerHTML = `
+            <div class="work-sim-header" id="car-profile-editor-handle" style="cursor: move;">
+                <span class="work-sim-title" id="car-profile-editor-title">⚙️ Профиль заряда</span>
+                <div class="work-sim-actions">
+                    <button class="work-sim-btn-icon" onclick="closeCarProfileEditor()">✕</button>
+                </div>
+            </div>
+            <div class="work-sim-content" style="flex-direction: row; gap: 15px; padding: 12px; height: calc(100% - 35px); overflow: hidden;">
+                <!-- Left Column: Inputs Table -->
+                <div style="flex: 1.2; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); padding-right: 10px;">
+                    <div style="display: flex; font-size: 10px; font-weight: bold; color: var(--text-muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px;">
+                        <span style="flex: 1;">Диапазон SoC</span>
+                        <span style="width: 75px; text-align: center;">Напряж. (В)</span>
+                        <span style="width: 75px; text-align: center;">Ток (А)</span>
+                        <span style="width: 75px; text-align: center;">Мощн. (кВт)</span>
+                    </div>
+                    <div id="car-profile-rows-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px;">
+                        <!-- Generated Dynamically -->
+                    </div>
+                </div>
+                <!-- Right Column: Interactive Charts -->
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
+                    <!-- Voltage Chart -->
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+                        <div style="font-size: 10px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>ГРАФИК НАПРЯЖЕНИЯ (В)</span>
+                            <span id="chart-voltage-info" style="color: var(--secondary); font-family: monospace;"></span>
+                        </div>
+                        <div id="chart-voltage-container" style="flex: 1; display: flex; gap: 4px; align-items: flex-end; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 6px; padding: 10px 8px; min-height: 80px;"></div>
+                    </div>
+                    <!-- Current Chart -->
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+                        <div style="font-size: 10px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>ГРАФИК ТОКА (А)</span>
+                            <span id="chart-current-info" style="color: #ff4a6b; font-family: monospace;"></span>
+                        </div>
+                        <div id="chart-current-container" style="flex: 1; display: flex; gap: 4px; align-items: flex-end; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 6px; padding: 10px 8px; min-height: 80px;"></div>
+                    </div>
+                    <!-- Power Chart -->
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+                        <div style="font-size: 10px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>ГРАФИК МОЩНОСТИ (кВт)</span>
+                            <span id="chart-power-info" style="color: var(--primary); font-family: monospace;"></span>
+                        </div>
+                        <div id="chart-power-container" style="flex: 1; display: flex; gap: 4px; align-items: flex-end; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 6px; padding: 10px 8px; min-height: 80px;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(editorModal);
+        
         initDragging('work-sim-panel', 'work-sim-handle');
         initDragging('work-sim-dash-panel', 'work-sim-dash-handle');
+        initDragging('car-profile-editor-modal', 'car-profile-editor-handle');
         
         initResizing('work-sim-panel');
         initResizing('work-sim-dash-panel');
@@ -224,7 +547,7 @@
                 panel.className = 'work-sim-panel floating';
                 
                 if (panelId === 'work-sim-panel') {
-                    panel.style.width = '400px';
+                    panel.style.width = '450px';
                     panel.style.height = '420px';
                 } else {
                     panel.style.width = '380px';
@@ -235,7 +558,7 @@
                 const layoutRect = layout ? layout.getBoundingClientRect() : { left: 0, top: 0 };
                 
                 if (panelId === 'work-sim-panel') {
-                    panelStartLeft = e.clientX - layoutRect.left - 200;
+                    panelStartLeft = e.clientX - layoutRect.left - 225;
                 } else {
                     panelStartLeft = e.clientX - layoutRect.left - 190;
                 }
@@ -392,7 +715,7 @@
             layout.appendChild(preview);
         }
         
-        const width = (panelId === 'work-sim-panel') ? '400px' : '380px';
+        const width = (panelId === 'work-sim-panel') ? '455px' : '380px';
         const bottomHeight = (panelId === 'work-sim-panel') ? '250px' : '200px';
         
         preview.style.display = 'block';
@@ -443,9 +766,9 @@
         
         if (side === 'floating') {
             if (panelId === 'work-sim-panel') {
-                panel.style.left = 'calc(50% - 410px)';
+                panel.style.left = 'calc(50% - 460px)';
                 panel.style.top = '100px';
-                panel.style.width = '400px';
+                panel.style.width = '450px';
                 panel.style.height = '420px';
             } else {
                 panel.style.left = 'calc(50% + 10px)';
@@ -461,7 +784,7 @@
             }
         } else {
             if (panelId === 'work-sim-panel') {
-                panel.style.width = '400px';
+                panel.style.width = '450px';
             } else {
                 panel.style.width = '380px';
             }
@@ -484,12 +807,6 @@
                     <input type="number" class="work-sim-input" value="${car.capacity}" style="width: 100%; text-align: center;" min="1" step="1" onchange="updateCarField(${index}, 'capacity', parseFloat(this.value) || 0)">
                 </td>
                 <td style="text-align: center;">
-                    <input type="number" class="work-sim-input" value="${car.voltage}" style="width: 100%; text-align: center;" min="1" step="10" onchange="updateCarField(${index}, 'voltage', parseFloat(this.value) || 0)">
-                </td>
-                <td style="text-align: center;">
-                    <input type="number" class="work-sim-input" value="${car.current}" style="width: 100%; text-align: center;" min="1" step="5" onchange="updateCarField(${index}, 'current', parseFloat(this.value) || 0)">
-                </td>
-                <td style="text-align: center;">
                     <input type="number" class="work-sim-input" value="${car.share || 0}" style="width: 100%; text-align: center;" min="0" max="100" onchange="updateCarField(${index}, 'share', parseInt(this.value)||0); checkTotalShare();">
                 </td>
                 <td style="text-align: center;">
@@ -498,6 +815,9 @@
                         <span style="color: var(--text-muted); font-size: 10px;">-</span>
                         <input type="number" class="work-sim-input" value="${car.socMax !== undefined ? car.socMax : 50}" style="width: 32px; text-align: center; padding: 4px 2px;" min="0" max="100" onchange="updateCarField(${index}, 'socMax', parseInt(this.value)||0)">
                     </div>
+                </td>
+                <td style="text-align: center;">
+                    <button class="btn btn-sm" style="font-size: 10px; padding: 2px 6px; width: auto; height: 22px; display: inline-flex; align-items: center; gap: 2px;" onclick="openCarProfileEditor(${index})">⚙️ Настроить</button>
                 </td>
                 <td style="text-align: center;">
                     <button class="btn-remove-row" onclick="removeCarRow(${index})" title="Удалить модель">✕</button>
@@ -516,9 +836,9 @@
         summaryTr.style.fontWeight = 'bold';
         summaryTr.style.borderTop = '1px solid var(--border)';
         summaryTr.innerHTML = `
-            <td colspan="4" style="text-align: left; padding: 8px 6px; color: var(--text-muted);">Итого доля:</td>
+            <td colspan="2" style="text-align: left; padding: 8px 6px; color: var(--text-muted);">Итого доля:</td>
             <td style="text-align: center; color: ${sumColor};" id="work-sim-total-share-cell">${sumText}</td>
-            <td colspan="2"></td>
+            <td colspan="3"></td>
         `;
         tbody.appendChild(summaryTr);
     }
@@ -594,7 +914,7 @@
                 const dt = 0.1 * multiplier;
                 window.workSimState.totalSeconds += dt;
                 
-                // 1. Process active charging for all connected cars
+                // 1. Process active charging for all connected cars (updates SoC and effectivePower)
                 processActiveCharging(dt);
                 
                 // 2. Accumulate Inverter Operating Hours based on delivered power
@@ -602,6 +922,14 @@
                 
                 // 3. Active Traffic Spawner check
                 checkTrafficSpawn();
+                
+                // 4. Global Priority Routing: runs every tick so that as SoC-based demand
+                //    shrinks (via the charging curve), freed inverter capacity is immediately
+                //    offered to waiting (orange) pistols like P15 in the reported bug.
+                if (window.runGlobalPriorityRouting) {
+                    window.runGlobalPriorityRouting();
+                }
+                if (window.updateCanvas) window.updateCanvas();
                 
                 updateSimUI();
             }
@@ -617,10 +945,19 @@
         
         for (let uid in window.workSimActiveConnections) {
             const conn = window.workSimActiveConnections[uid];
-            const power = simData.pistolPowers[uid] || 0; // actual power flow in kW
+            const allocatedPower = simData.pistolPowers[uid] || 0; // power allocated by inverters (kW)
+            
+            // Calculate car's max acceptable power at current SoC from its curve
+            const carMaxPower = getCarMaxPowerAtSoC(conn.car, conn.currentSoC);
+            
+            // Actual charging power = min(what inverters deliver, what car can accept)
+            const actualPower = Math.min(allocatedPower, carMaxPower);
+            
+            conn.effectivePower = actualPower;
+            conn.carMaxPower = carMaxPower; // expose for UI rendering
             
             // energy = power * time (kWh)
-            const energyDelivered = power * dtHours; 
+            const energyDelivered = actualPower * dtHours;
             const capacity = conn.car.capacity || 60; // capacity in kWh
             
             const dSoc = (energyDelivered / capacity) * 100;
@@ -642,14 +979,15 @@
             }
         }
         
-        // Trigger routing event: car departed → free its inverters and notify orange pistols
+        // On car departure, trigger onCarDeparture for proper cleanup
+        // (the main ticker loop already calls runGlobalPriorityRouting every tick,
+        //  so we don't need extra routing calls here)
         if (stateChanged) {
             departedUids.forEach(uid => {
                 if (window.onCarDeparture) {
                     window.onCarDeparture(uid);
                 }
             });
-            if (window.updateCanvas) window.updateCanvas();
         }
     }
 
@@ -755,20 +1093,22 @@
             
             if (activeSession) {
                 carModel = activeSession.car.brand;
-                powerCell = `<span style="font-weight: 700; color: var(--text-main);">${Math.round(power)} кВт</span>`;
+                
+                // Use effectivePower (curve-capped) if available, else fall back to pistolPowers
+                const effectivePower = (activeSession.effectivePower !== undefined)
+                    ? activeSession.effectivePower
+                    : power;
+                // carMaxPower = what the car can accept right now at its SoC
+                const carMaxPower = (activeSession.carMaxPower !== undefined)
+                    ? activeSession.carMaxPower
+                    : getCarMaxPowerAtSoC(activeSession.car, activeSession.currentSoC);
+                
+                powerCell = `<span style="font-weight: 700; color: var(--text-main);">${Math.round(effectivePower)} кВт</span>`;
                 socCell = `<span style="color: var(--primary); font-weight: bold;">${activeSession.currentSoC.toFixed(1)}%</span>`;
                 
                 const parts = p.uid.split('-');
                 const fId = parseInt(parts[0]);
                 const key = `${parts[1]}-${parts[2]}`;
-                
-                let demandNum = 0;
-                if (window.appState && window.appState.pistolDemands && window.appState.pistolDemands[p.uid]) {
-                    const settings = window.appState.pistolDemands[p.uid];
-                    const u = settings.voltage || 0;
-                    const i = settings.current || 0;
-                    demandNum = (u * i) / 1000;
-                }
                 
                 let hasPistolError = false;
                 if (simData.errorMessages && window.appState && window.appState.fields) {
@@ -782,15 +1122,19 @@
                 if (hasPistolError) {
                     statusColor = '#ff4a6b';
                     statusText = '⚠️ Конфликт';
-                } else if (power >= demandNum - 0.01 && demandNum > 0) {
-                    statusColor = '#00ffaa';
-                    statusText = '⚡ Зарядка';
-                } else if (power > 0.01) {
-                    statusColor = '#ffd166'; // Yellow
-                    statusText = '⚡ Зарядка';
                 } else {
-                    statusColor = '#ff6b00'; // Orange
-                    statusText = '⏳ Ожидание';
+                    // Show brackets only when the delivered power (effectivePower) is less than 
+                    // the current requested power at this SoC (carMaxPower)
+                    if (effectivePower > 0.01 && effectivePower < carMaxPower - 1) {
+                        statusColor = '#00ffaa';
+                        statusText = `⚡ Зарядка <span style="color: #ffd166; text-shadow: 0 0 6px rgba(255,209,102,0.2); font-weight: bold;">(${Math.round(effectivePower)}/${Math.round(carMaxPower)})</span>`;
+                    } else if (effectivePower > 0.01) {
+                        statusColor = '#00ffaa';
+                        statusText = '⚡ Зарядка';
+                    } else {
+                        statusColor = '#ff6b00';
+                        statusText = '⏳ Ожидание';
+                    }
                 }
             } else {
                 statusColor = '#00ffaa';
@@ -909,21 +1253,19 @@
     }
 
     // Window global APIs
-    window.toggleWorkSimulationPanel = function() {
-        const panel = document.getElementById('work-sim-panel');
-        const dash = document.getElementById('work-sim-dash-panel');
+    window.toggleWorkSimulation = function() {
         const btn = document.getElementById('btn-work-sim');
         const layout = document.getElementById('app-layout');
-        if (!panel || !dash) return;
+        const dash = document.getElementById('work-sim-dash-panel');
         
-        const isOpening = (panel.style.display === 'none');
+        const isOpening = !window.workSimState.isActiveSimRun;
         window.workSimState.isActiveSimRun = isOpening;
         
         if (isOpening) {
-            panel.style.display = 'flex';
-            dash.style.display = 'flex';
             if (btn) btn.classList.add('active');
             if (layout) layout.classList.add('work-sim-active');
+            // Automatically show the control dashboard when starting simulation
+            if (dash) dash.style.display = 'flex';
             
             // Save user's original autoConnect configurations
             preSimAutoConnectStates = {};
@@ -940,12 +1282,10 @@
             updateSimUI();
             startSimTicker();
         } else {
-            panel.style.display = 'none';
-            dash.style.display = 'none';
             if (btn) btn.classList.remove('active');
             if (layout) layout.classList.remove('work-sim-active');
-            hideSnapPreview();
-            stopSimTicker();
+            if (dash) dash.style.display = 'none';
+            window.cleanupWorkSimulation();
         }
 
         if (window.updateCanvas) window.updateCanvas();
@@ -1004,7 +1344,13 @@
     };
 
     window.addCarRow = function() {
-        window.workSimCars.push({ brand: 'Новая модель', capacity: 60, voltage: 400, current: 150, share: 0, socMin: 10, socMax: 50 });
+        const newCar = { brand: 'Новая модель', capacity: 60, voltage: 400, current: 150, share: 0, socMin: 10, socMax: 50 };
+        ensureCarProfiles(newCar);
+        // Clean up legacy fields so they don't persist
+        delete newCar.voltage;
+        delete newCar.current;
+        delete newCar.curve;
+        window.workSimCars.push(newCar);
         renderCarsTable();
     };
 
@@ -1014,7 +1360,11 @@
     };
 
     window.exportCarsConfig = function() {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.workSimCars, null, 2));
+        const cleanedCars = window.workSimCars.map(car => {
+            const { voltage, current, curve, ...rest } = car;
+            return rest;
+        });
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanedCars, null, 2));
         const downloadAnchor = document.createElement('a');
         downloadAnchor.setAttribute("href", dataStr);
         downloadAnchor.setAttribute("download", "cars_configuration.json");
@@ -1037,19 +1387,28 @@
             try {
                 const parsed = JSON.parse(e.target.result);
                 if (Array.isArray(parsed)) {
+                    // Validates both old legacy formats and new clean profile formats
                     const valid = parsed.every(item => 
                         typeof item.brand === 'string' &&
                         typeof item.capacity === 'number' &&
-                        typeof item.voltage === 'number' &&
-                        typeof item.current === 'number'
+                        (item.voltages ? Array.isArray(item.voltages) : typeof item.voltage === 'number') &&
+                        (item.currents ? Array.isArray(item.currents) : typeof item.current === 'number')
                     );
                     if (valid) {
-                        window.workSimCars = parsed.map(c => ({
-                            ...c,
-                            share: c.share !== undefined ? c.share : 0,
-                            socMin: c.socMin !== undefined ? c.socMin : 10,
-                            socMax: c.socMax !== undefined ? c.socMax : 50
-                        }));
+                        window.workSimCars = parsed.map(c => {
+                            const newCar = {
+                                ...c,
+                                share: c.share !== undefined ? c.share : 0,
+                                socMin: c.socMin !== undefined ? c.socMin : 10,
+                                socMax: c.socMax !== undefined ? c.socMax : 50
+                            };
+                            ensureCarProfiles(newCar);
+                            // Strip legacy variables so the imported configuration remains clean
+                            delete newCar.voltage;
+                            delete newCar.current;
+                            delete newCar.curve;
+                            return newCar;
+                        });
                         renderCarsTable();
                     } else {
                         alert('Неверный формат файла конфигурации автомобилей!');
@@ -1064,6 +1423,176 @@
         reader.readAsText(file);
         event.target.value = '';
     };
+
+    // ⚙️ Car Charging Profile Editor logic
+    let currentEditingCarIndex = null;
+
+    window.openCarProfileEditor = function(index) {
+        const car = window.workSimCars[index];
+        if (!car) return;
+        currentEditingCarIndex = index;
+        ensureCarProfiles(car);
+
+        const modal = document.getElementById('car-profile-editor-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            document.getElementById('car-profile-editor-title').textContent = `⚙️ Профиль заряда: ${car.brand}`;
+            
+            // Build the input grid row-by-row
+            const rowsContainer = document.getElementById('car-profile-rows-container');
+            if (rowsContainer) {
+                rowsContainer.innerHTML = '';
+                for (let i = 0; i < 10; i++) {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.alignItems = 'center';
+                    row.style.gap = '8px';
+                    row.style.fontSize = '11px';
+                    row.style.padding = '4px 0';
+                    row.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+                    
+                    const label = document.createElement('span');
+                    label.style.flex = '1';
+                    label.style.color = 'var(--text-muted)';
+                    label.style.fontWeight = '500';
+                    label.textContent = `${i*10} – ${(i+1)*10}%`;
+
+                    const vInput = document.createElement('input');
+                    vInput.type = 'number';
+                    vInput.className = 'work-sim-input';
+                    vInput.style.width = '75px';
+                    vInput.style.textAlign = 'center';
+                    vInput.value = car.voltages[i];
+                    vInput.min = '0';
+                    vInput.max = '1200';
+                    vInput.step = '10';
+                    vInput.oninput = function() {
+                        const val = parseFloat(this.value) || 0;
+                        car.voltages[i] = val;
+                        pLabel.textContent = ((val * car.currents[i]) / 1000).toFixed(1);
+                        renderProfileCharts(car);
+                        if (window.updateCanvas) window.updateCanvas();
+                    };
+
+                    const cInput = document.createElement('input');
+                    cInput.type = 'number';
+                    cInput.className = 'work-sim-input';
+                    cInput.style.width = '75px';
+                    cInput.style.textAlign = 'center';
+                    cInput.value = car.currents[i];
+                    cInput.min = '0';
+                    cInput.max = '1000';
+                    cInput.step = '5';
+                    cInput.oninput = function() {
+                        const val = parseFloat(this.value) || 0;
+                        car.currents[i] = val;
+                        pLabel.textContent = ((car.voltages[i] * val) / 1000).toFixed(1);
+                        renderProfileCharts(car);
+                        if (window.updateCanvas) window.updateCanvas();
+                    };
+
+                    const pLabel = document.createElement('span');
+                    pLabel.style.width = '75px';
+                    pLabel.style.textAlign = 'center';
+                    pLabel.style.fontWeight = 'bold';
+                    pLabel.style.color = 'var(--primary)';
+                    pLabel.textContent = ((car.voltages[i] * car.currents[i]) / 1000).toFixed(1);
+
+                    row.appendChild(label);
+                    row.appendChild(vInput);
+                    row.appendChild(cInput);
+                    row.appendChild(pLabel);
+                    rowsContainer.appendChild(row);
+                }
+            }
+            renderProfileCharts(car);
+        }
+    };
+
+    window.closeCarProfileEditor = function() {
+        const modal = document.getElementById('car-profile-editor-modal');
+        if (modal) modal.style.display = 'none';
+        currentEditingCarIndex = null;
+    };
+
+    function renderProfileCharts(car) {
+        const vContainer = document.getElementById('chart-voltage-container');
+        const cContainer = document.getElementById('chart-current-container');
+        const pContainer = document.getElementById('chart-power-container');
+        if (!vContainer || !cContainer || !pContainer) return;
+
+        vContainer.innerHTML = '';
+        cContainer.innerHTML = '';
+        pContainer.innerHTML = '';
+
+        const maxV = Math.max(...car.voltages, 100);
+        const maxI = Math.max(...car.currents, 50);
+        const powers = car.voltages.map((v, idx) => (v * car.currents[idx]) / 1000);
+        const maxP = Math.max(...powers, 10);
+
+        for (let i = 0; i < 10; i++) {
+            const v = car.voltages[i];
+            const c = car.currents[i];
+            const p = powers[i];
+
+            // 1. Voltage Bar
+            const vBar = document.createElement('div');
+            vBar.style.flex = '1';
+            vBar.style.height = `${Math.max(5, (v / maxV) * 95)}%`;
+            vBar.style.background = 'linear-gradient(to top, rgba(0, 240, 255, 0.1), var(--secondary))';
+            vBar.style.borderRadius = '3px 3px 0 0';
+            vBar.style.transition = 'height 0.2s ease, opacity 0.15s';
+            vBar.style.cursor = 'pointer';
+            vBar.style.border = '1px solid rgba(0, 240, 255, 0.15)';
+            vBar.onmouseover = () => {
+                vBar.style.opacity = '0.8';
+                document.getElementById('chart-voltage-info').textContent = `${i*10}–${(i+1)*10}% SoC: ${v} В`;
+            };
+            vBar.onmouseout = () => {
+                vBar.style.opacity = '1';
+                document.getElementById('chart-voltage-info').textContent = '';
+            };
+            vContainer.appendChild(vBar);
+
+            // 2. Current Bar
+            const cBar = document.createElement('div');
+            cBar.style.flex = '1';
+            cBar.style.height = `${Math.max(5, (c / maxI) * 95)}%`;
+            cBar.style.background = 'linear-gradient(to top, rgba(255, 74, 107, 0.1), #ff4a6b)';
+            cBar.style.borderRadius = '3px 3px 0 0';
+            cBar.style.transition = 'height 0.2s ease, opacity 0.15s';
+            cBar.style.cursor = 'pointer';
+            cBar.style.border = '1px solid rgba(255, 74, 107, 0.15)';
+            cBar.onmouseover = () => {
+                cBar.style.opacity = '0.8';
+                document.getElementById('chart-current-info').textContent = `${i*10}–${(i+1)*10}% SoC: ${c} А`;
+            };
+            cBar.onmouseout = () => {
+                cBar.style.opacity = '1';
+                document.getElementById('chart-current-info').textContent = '';
+            };
+            cContainer.appendChild(cBar);
+
+            // 3. Power Bar
+            const pBar = document.createElement('div');
+            pBar.style.flex = '1';
+            pBar.style.height = `${Math.max(5, (p / maxP) * 95)}%`;
+            pBar.style.background = 'linear-gradient(to top, rgba(0, 255, 170, 0.1), var(--primary))';
+            pBar.style.borderRadius = '3px 3px 0 0';
+            pBar.style.transition = 'height 0.2s ease, opacity 0.15s';
+            pBar.style.cursor = 'pointer';
+            pBar.style.border = '1px solid rgba(0, 255, 170, 0.15)';
+            pBar.onmouseover = () => {
+                pBar.style.opacity = '0.8';
+                document.getElementById('chart-power-info').textContent = `${i*10}–${(i+1)*10}% SoC: ${p.toFixed(1)} кВт`;
+            };
+            pBar.onmouseout = () => {
+                pBar.style.opacity = '1';
+                document.getElementById('chart-power-info').textContent = '';
+            };
+            pContainer.appendChild(pBar);
+        }
+    }
 
     // Auto-inject on load
     if (document.readyState === 'loading') {

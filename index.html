@@ -16,6 +16,18 @@
             <h1>⚙️ EV Switching Matrix CAD</h1>
             <p>Многопоточный двухпроводный силовой редактор со сквозной нумерацией кабелей</p>
         </div>
+        
+        <div class="dropdown" style="position: relative; display: inline-block; margin-right: auto; margin-left: 24px;">
+            <button class="btn" onclick="toggleWindowsMenu(event)" style="width: auto; padding: 8px 12px; display: flex; align-items: center; gap: 4px;">
+                🪟 Окна <span style="font-size: 10px;">▼</span>
+            </button>
+            <div id="windows-dropdown-content" class="dropdown-content" style="display: none; position: absolute; left: 0; top: 100%; margin-top: 4px; background-color: var(--bg-card); min-width: 170px; box-shadow: 0px 4px 12px rgba(0,0,0,0.5); z-index: 10000; border: 1px solid var(--border); border-radius: 6px; padding: 4px 0; font-family: 'Space Grotesk', sans-serif;">
+                <div onclick="clickMenuDebug(event)" style="padding: 8px 12px; cursor: pointer; color: var(--text-main); transition: background-color 0.2s; font-size: 13px;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'">🛠️ Отладка</div>
+                <div onclick="clickMenuCars(event)" style="padding: 8px 12px; cursor: pointer; color: var(--text-main); transition: background-color 0.2s; font-size: 13px;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'">🚗 Автопарк симуляции</div>
+                <div onclick="clickMenuDash(event)" style="padding: 8px 12px; cursor: pointer; color: var(--text-main); transition: background-color 0.2s; font-size: 13px;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'">⏱️ Панель управления</div>
+            </div>
+        </div>
+        
         <div class="header-controls">
             <button class="btn" style="width: auto; padding: 8px 12px;" onclick="toggleTheme()">☀️ / 🌙 Тема</button>
             
@@ -24,7 +36,7 @@
                 <button class="mode-btn" id="mode-btn-sim" onclick="setMode(true)">Симуляция</button>
             </div>
             
-            <button class="btn" id="btn-work-sim" style="display: none; width: auto; margin-left: 8px;" onclick="toggleWorkSimulationPanel()">⚡ Симуляция работы</button>
+            <button class="btn" id="btn-work-sim" style="display: none; width: auto; margin-left: 8px;" onclick="toggleWorkSimulation()">⚡ Симуляция работы</button>
             
             <button class="btn" style="width: auto;" onclick="saveToFile()">💾 Сохранить</button>
             <button class="btn" style="width: auto;" onclick="triggerFileLoad()">📁 Загрузить</button>
@@ -91,8 +103,8 @@
                     <button class="tool-btn" id="tool-cable" onclick="setTool('cable')">
                         <div class="tool-icon">📥</div>
                         <div class="tool-details">
-                            <strong>Кабель / Клемма</strong>
-                            <span>На любом краю (Слева/Сверху/Снизу/Справа)</span>
+                            <strong>Цепь (NET)</strong>
+                            <span>На краях поля (межстраничные связи)</span>
                         </div>
                     </button>
                     <button class="tool-btn" id="tool-pistol" onclick="setTool('pistol')">
@@ -233,6 +245,20 @@
             <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
                 <button class="btn" onclick="closeConflictDialog()">Отмена</button>
             </div>
+        </div>
+    </div>
+    
+    <!-- Debug Panel -->
+    <div id="debug-panel" class="work-sim-panel floating" style="display: none; width: 300px; height: 120px; z-index: 10000; left: 100px; top: 100px; position: fixed;">
+        <div class="work-sim-handle" id="debug-panel-handle" style="cursor: move; padding: 8px 12px; background: var(--bg-header); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; border-radius: 6px 6px 0 0; user-select: none;">
+            <span style="font-weight: bold; font-size: 12px; color: var(--text-main);">🛠️ Отладка алгоритмов</span>
+            <button onclick="toggleDebugPanel()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px;">✕</button>
+        </div>
+        <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--text-main); user-select: none;">
+                <input type="checkbox" id="toggle-debug-inverter-order" onchange="toggleInverterOrder(this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);">
+                <span>Отображать порядок инверторов</span>
+            </label>
         </div>
     </div>
 
