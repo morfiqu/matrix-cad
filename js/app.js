@@ -74,13 +74,79 @@ function updateCanvas() {
         const fieldRowContainer = document.createElement('div');
         fieldRowContainer.className = 'field-row-container';
         fieldRowContainer.id = `field-container-${field.id}`;
+        fieldRowContainer.style.flexDirection = 'column';
+        fieldRowContainer.style.alignItems = 'stretch';
+        fieldRowContainer.style.gap = '10px';
         
+        // 1. Header (Name of the Field)
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
+        header.style.paddingBottom = '6px';
+        
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'field-title-span';
+        titleSpan.style.fontWeight = 'bold';
+        titleSpan.style.fontSize = '12px';
+        titleSpan.style.color = 'var(--text-main)';
+        titleSpan.style.cursor = 'pointer';
+        titleSpan.textContent = field.name || `Поле ${index + 1}`;
+        titleSpan.title = 'Двойной клик для переименования';
+        
+        // Double-click to rename
+        titleSpan.ondblclick = () => {
+            if (appState.isSimulationMode) return;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'work-sim-input';
+            input.style.fontSize = '12px';
+            input.style.fontWeight = 'bold';
+            input.style.padding = '2px 6px';
+            input.style.width = '200px';
+            input.value = field.name || `Поле ${index + 1}`;
+            
+            const commitRename = () => {
+                const val = input.value.trim();
+                if (val && val !== field.name) {
+                    field.name = val;
+                    saveHistoryState(appState);
+                }
+                updateCanvas();
+            };
+            
+            input.onkeydown = (ev) => {
+                if (ev.key === 'Enter') {
+                    commitRename();
+                } else if (ev.key === 'Escape') {
+                    updateCanvas();
+                }
+            };
+            input.onblur = commitRename;
+            
+            header.replaceChild(input, titleSpan);
+            input.focus();
+            input.select();
+        };
+        
+        header.appendChild(titleSpan);
+        fieldRowContainer.appendChild(header);
+
+        // 2. Body Container (holds scroll wrapper and delete button)
+        const bodyContainer = document.createElement('div');
+        bodyContainer.style.display = 'flex';
+        bodyContainer.style.alignItems = 'center';
+        bodyContainer.style.gap = '16px';
+        bodyContainer.style.width = '100%';
+        fieldRowContainer.appendChild(bodyContainer);
+
         const scrollWrapper = document.createElement('div');
         scrollWrapper.className = 'field-scroll-wrapper';
         scrollWrapper.style.flex = '1';
         scrollWrapper.style.minWidth = '0';
         scrollWrapper.style.overflowX = 'auto';
-        fieldRowContainer.appendChild(scrollWrapper);
+        bodyContainer.appendChild(scrollWrapper);
 
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg.id = `cad-svg-${field.id}`;
@@ -97,7 +163,7 @@ function updateCanvas() {
             delBtn.style.flexShrink = '0';
             delBtn.innerHTML = '🗑️';
             delBtn.onclick = () => deleteField(field.id);
-            fieldRowContainer.appendChild(delBtn);
+            bodyContainer.appendChild(delBtn);
         }
         
         fieldsList.appendChild(fieldRowContainer);
@@ -556,6 +622,7 @@ function startGroupDrag(e, fieldId, startR, startC, startType) {
     const clickedKey = `${startR}-${startC}`;
     const clickedSelectionKey = `${fieldId}-${startType}-${clickedKey}`;
     let shouldDeselectOnMouseUp = false;
+    let shouldSingleSelectOnMouseUp = false;
     
     const svgEl = document.getElementById(`cad-svg-${fieldId}`);
     if (!svgEl) return;
@@ -569,6 +636,8 @@ function startGroupDrag(e, fieldId, startR, startC, startType) {
     } else {
         if (e.ctrlKey || e.metaKey) {
             shouldDeselectOnMouseUp = true;
+        } else if (appState.selectedKeys.size > 1) {
+            shouldSingleSelectOnMouseUp = true;
         }
     }
     
@@ -741,6 +810,9 @@ function startGroupDrag(e, fieldId, startR, startC, startType) {
             
             if (shouldDeselectOnMouseUp) {
                 appState.selectedKeys.delete(clickedSelectionKey);
+            } else if (shouldSingleSelectOnMouseUp) {
+                appState.selectedKeys.clear();
+                appState.selectedKeys.add(clickedSelectionKey);
             }
         }
         
@@ -1154,6 +1226,28 @@ function cancelPasteMode() {
 
 function isPastePositionValid(field, anchorR, anchorC) {
     if (!clipboard) return false;
+
+    // Helper to query components either on the target sheet or in the clipboard items being pasted
+    function getComponentAt(r, c) {
+        const existing = field.components[`${r}-${c}`];
+        if (existing) return existing;
+        
+        const clipItem = clipboard.items.find(item => item.type === 'comp' && (anchorR + item.relR === r) && (anchorC + item.relC === c));
+        if (clipItem) {
+            // Determine pos dynamically since it is calculated upon paste
+            if (clipItem.data.type === 'cable') {
+                let pos = 'middle';
+                if (c === 0) pos = 'left';
+                else if (c === field.cols - 1) pos = 'right';
+                else if (r === 0) pos = 'top';
+                else if (r === field.rows - 1) pos = 'bottom';
+                return { ...clipItem.data, pos };
+            }
+            return clipItem.data;
+        }
+        return null;
+    }
+
     for (let item of clipboard.items) {
         const tr = anchorR + item.relR;
         const tc = anchorC + item.relC;
@@ -1172,7 +1266,7 @@ function isPastePositionValid(field, anchorR, anchorC) {
             if (!item.data.type || item.data.type === 'standard') {
                 let hasRowWire = false;
                 for (let cc = 0; cc < field.cols; cc++) {
-                    const comp = field.components[`${tr}-${cc}`];
+                    const comp = getComponentAt(tr, cc);
                     if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
                         hasRowWire = true; break;
                     }
@@ -1180,7 +1274,7 @@ function isPastePositionValid(field, anchorR, anchorC) {
                 if (!hasRowWire) return false;
                 let hasColWire = false;
                 for (let rr = 0; rr < field.rows; rr++) {
-                    const comp = field.components[`${rr}-${tc}`];
+                    const comp = getComponentAt(rr, tc);
                     if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
                         hasColWire = true; break;
                     }
@@ -1190,14 +1284,14 @@ function isPastePositionValid(field, anchorR, anchorC) {
             if (item.data.type === 'horizontal' || item.data.type === 'vertical') {
                 let hasRowWire = false;
                 for (let cc = 0; cc < field.cols; cc++) {
-                    const comp = field.components[`${tr}-${cc}`];
+                    const comp = getComponentAt(tr, cc);
                     if (comp && (comp.type === 'inverter' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
                         hasRowWire = true; break;
                     }
                 }
                 let hasColWire = false;
                 for (let rr = 0; rr < field.rows; rr++) {
-                    const comp = field.components[`${rr}-${tc}`];
+                    const comp = getComponentAt(rr, tc);
                     if (comp && (comp.type === 'pistol' || (comp.type === 'cable' && comp.pos !== 'middle'))) {
                         hasColWire = true; break;
                     }
@@ -1819,6 +1913,13 @@ function applyRenumbering() {
         const list = grouped[type];
         
         list.sort((a, b) => {
+            // Sort by sheet/field index first, so components on Field 1 are numbered before Field 2
+            const idxA = appState.fields.findIndex(f => f.id === a.fieldId);
+            const idxB = appState.fields.findIndex(f => f.id === b.fieldId);
+            if (idxA !== idxB) {
+                return idxA - idxB;
+            }
+            
             const rA = a.r, cA = a.c;
             const rB = b.r, cB = b.c;
             switch (direction) {
@@ -3543,6 +3644,11 @@ window.setMode = function(isSim) {
             chk.checked = false;
             chk.disabled = true;
         }
+        
+        // Reset selected tool to 'select' when returning to design mode
+        appState.activeTool = 'select';
+        document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tool-select')?.classList.add('active');
         
         // Clean up work simulation and hide panels when switching back to design mode
         if (window.cleanupWorkSimulation) {

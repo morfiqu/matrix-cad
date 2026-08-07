@@ -61,7 +61,14 @@ function bindSVGDragSelection(field, svg, state) {
         }
         
         const isCtrlPressed = e.ctrlKey || e.metaKey;
-        if (!isCtrlPressed) return; // Drag selection is only allowed when Control is held down
+        if (!isCtrlPressed) {
+            // Left click on empty space without Control should clear selection
+            if (currentTool === 'select' && selectedKeys.size > 0) {
+                selectedKeys.clear();
+                if (onUpdateCanvas) onUpdateCanvas();
+            }
+            return;
+        }
         
         const isContactorCtrlDrag = (currentTool === 'contactor' && isCtrlPressed);
         if (currentTool !== 'select' && !isContactorCtrlDrag) return;
