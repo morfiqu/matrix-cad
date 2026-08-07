@@ -553,12 +553,14 @@ function handleCompContextMenu(e, fId, r, c, type, key) {
             menu.style.display = 'block';
             
             let compsCount = 0;
+            let ctcsCount = 0;
             appState.selectedKeys.forEach(k => {
                 if (k.includes('-comp-')) compsCount++;
+                if (k.includes('-ctc-')) ctcsCount++;
             });
             const renumberBtn = document.getElementById('ctx-renumber-btn');
             if (renumberBtn) {
-                renumberBtn.style.display = compsCount > 1 ? 'block' : 'none';
+                renumberBtn.style.display = (compsCount > 1 || ctcsCount > 1) ? 'block' : 'none';
             }
         }
     }
@@ -606,8 +608,17 @@ function handleCtcContextMenu(e, fId, r, c, type, key) {
             menu.style.left = `${e.pageX}px`;
             menu.style.top = `${e.pageY}px`;
             menu.style.display = 'block';
+            
+            let compsCount = 0;
+            let ctcsCount = 0;
+            appState.selectedKeys.forEach(k => {
+                if (k.includes('-comp-')) compsCount++;
+                if (k.includes('-ctc-')) ctcsCount++;
+            });
             const renumberBtn = document.getElementById('ctx-renumber-btn');
-            if (renumberBtn) renumberBtn.style.display = 'none';
+            if (renumberBtn) {
+                renumberBtn.style.display = (compsCount > 1 || ctcsCount > 1) ? 'block' : 'none';
+            }
         }
     }
 }
@@ -1845,12 +1856,15 @@ function deleteSelectedFromContextMenu() {
 }
 
 let selectedCompsForRenumber = [];
+let selectedCtcsForRenumber = [];
 
 function openRenumberDialog() {
     const menu = document.getElementById('custom-context-menu');
     if (menu) menu.style.display = 'none';
     
     selectedCompsForRenumber = [];
+    selectedCtcsForRenumber = [];
+    
     appState.selectedKeys.forEach(selKey => {
         const parts = selKey.split('-');
         const fId = parseInt(parts[0]);
@@ -1858,27 +1872,53 @@ function openRenumberDialog() {
         const r = parseInt(parts[2]);
         const c = parseInt(parts[3]);
         const field = appState.fields.find(f => f.id === fId);
-        if (field && type === 'comp' && field.components[`${r}-${c}`]) {
-            selectedCompsForRenumber.push({
-                fieldId: fId,
-                r, c,
-                comp: field.components[`${r}-${c}`]
-            });
+        if (field) {
+            if (type === 'comp' && field.components[`${r}-${c}`]) {
+                selectedCompsForRenumber.push({
+                    fieldId: fId,
+                    r, c,
+                    comp: field.components[`${r}-${c}`]
+                });
+            } else if (type === 'ctc' && field.contactors[`${r}-${c}`]) {
+                selectedCtcsForRenumber.push({
+                    fieldId: fId,
+                    r, c,
+                    ctc: field.contactors[`${r}-${c}`]
+                });
+            }
         }
     });
     
-    if (selectedCompsForRenumber.length < 2) {
-        alert("Для массовой перенумерации нужно выделить минимум 2 элемента!");
+    const compsLen = selectedCompsForRenumber.length;
+    const ctcsLen = selectedCtcsForRenumber.length;
+    
+    if (compsLen < 2 && ctcsLen < 2) {
+        alert("Для массовой перенумерации нужно выделить минимум 2 элемента одного типа (компоненты или контакторы)!");
         return;
     }
     
-    document.getElementById('renumber-start').value = "1";
+    const poleSection = document.getElementById('renumber-contactor-pole-section');
+    const titleEl = document.querySelector('#renumber-dialog .dialog-title');
+    
+    if (ctcsLen >= 2) {
+        // Renumbering contactors
+        if (poleSection) poleSection.style.display = 'block';
+        if (titleEl) titleEl.textContent = "Перенумеровать контакторы";
+        document.getElementById('renumber-start').value = "1";
+    } else {
+        // Renumbering components
+        if (poleSection) poleSection.style.display = 'none';
+        if (titleEl) titleEl.textContent = "Перенумеровать компоненты";
+        document.getElementById('renumber-start').value = "1";
+    }
+    
     document.getElementById('renumber-dialog').style.display = 'flex';
 }
 
 function closeRenumberDialog() {
     document.getElementById('renumber-dialog').style.display = 'none';
     selectedCompsForRenumber = [];
+    selectedCtcsForRenumber = [];
 }
 
 function applyRenumbering() {
@@ -1901,6 +1941,79 @@ function applyRenumbering() {
     
     const direction = document.getElementById('renumber-direction').value;
     
+    // Check if we are renumbering contactors
+    if (selectedCtcsForRenumber.length >= 2) {
+        const pole = document.querySelector('input[name="renumber-ctc-pole"]:checked').value; // 'positive' or 'negative'
+        
+        selectedCtcsForRenumber.sort((a, b) => {
+            const idxA = appState.fields.findIndex(f => f.id === a.fieldId);
+            const idxB = appState.fields.findIndex(f => f.id === b.fieldId);
+            if (idxA !== idxB) {
+                return idxA - idxB;
+            }
+            
+            const rA = a.r, cA = a.c;
+            const rB = b.r, cB = b.c;
+            switch (direction) {
+                case 'L_R_T_B': return (rA - rB) || (cA - cB);
+                case 'R_L_T_B': return (rA - rB) || (cB - cA);
+                case 'L_R_B_T': return (rB - rA) || (cA - cB);
+                case 'R_L_B_T': return (rB - rA) || (cB - cA);
+                case 'T_B_L_R': return (cA - cB) || (rA - rB);
+                case 'T_B_R_L': return (cB - cA) || (rA - rB);
+                case 'B_T_L_R': return (cA - cB) || (rB - rA);
+                case 'B_T_R_L': return (cB - cA) || (rB - rA);
+            }
+            return 0;
+        });
+        
+        // Collect proposed names to validate uniqueness
+        const proposedGlobalNames = {};
+        appState.fields.forEach(f => {
+            for (let k in f.contactors) {
+                const c = f.contactors[k];
+                const gKey = `${f.id}-ctc-${k}`;
+                if (c.nameP) proposedGlobalNames[c.nameP.trim().toLowerCase()] = gKey;
+                if (c.nameN) proposedGlobalNames[c.nameN.trim().toLowerCase()] = gKey;
+            }
+        });
+        
+        // Remove names of selected contactors' current pole to prevent self-collision
+        selectedCtcsForRenumber.forEach(item => {
+            const oldName = pole === 'positive' ? item.ctc.nameP : item.ctc.nameN;
+            if (oldName) {
+                delete proposedGlobalNames[oldName.trim().toLowerCase()];
+            }
+        });
+        
+        let changed = false;
+        selectedCtcsForRenumber.forEach((item, index) => {
+            const num = numPart + index;
+            const newNameSuffix = letterPart + num;
+            const finalName = 'k' + newNameSuffix.replace(/^k/i, '');
+            
+            if (pole === 'positive') {
+                if (item.ctc.nameP !== finalName) {
+                    item.ctc.nameP = finalName;
+                    changed = true;
+                }
+            } else {
+                if (item.ctc.nameN !== finalName) {
+                    item.ctc.nameN = finalName;
+                    changed = true;
+                }
+            }
+        });
+        
+        if (changed) {
+            saveHistoryState(appState);
+        }
+        closeRenumberDialog();
+        updateCanvas();
+        return;
+    }
+    
+    // Components renumbering
     const grouped = {};
     selectedCompsForRenumber.forEach(item => {
         const t = item.comp.type;

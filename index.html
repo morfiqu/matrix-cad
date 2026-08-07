@@ -206,6 +206,18 @@
         <div class="dialog-box" style="width: 380px;">
             <h3 class="dialog-title" style="margin-bottom: 16px;">Перенумеровать компоненты</h3>
             
+            <div id="renumber-contactor-pole-section" style="margin-bottom: 12px; display: none;">
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Полюс для нумерации контакторов:</label>
+                <div style="display: flex; gap: 16px; align-items: center; background: var(--modal-input-bg); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main); font-size: 12px;">
+                        <input type="radio" name="renumber-ctc-pole" value="positive" checked style="accent-color: var(--primary); cursor: pointer;"> Положительный (+)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main); font-size: 12px;">
+                        <input type="radio" name="renumber-ctc-pole" value="negative" style="accent-color: var(--primary); cursor: pointer;"> Отрицательный (-)
+                    </label>
+                </div>
+            </div>
+            
             <div style="margin-bottom: 12px;">
                 <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Начать нумерацию с (например: 1, a1, b5):</label>
                 <input type="text" class="dialog-input" id="renumber-start" value="1" style="width: 100%;">
